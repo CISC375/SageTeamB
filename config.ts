@@ -1,13 +1,13 @@
 export const BOT = {
-	TOKEN: 'df432bec2d87c3a7149e000dbb84299d7417bd6185e73477f3bdaa1fcf4e5aa2', // Bot token here
-	CLIENT_ID: '1340018861654806588', // Client ID here
-	NAME: 'Ian_Sage'// Bot Name. NEEDS TO BE LESS THAN 11 CHARACTERS
+	TOKEN: '', // Bot token here
+	CLIENT_ID: '', // Client ID here
+	NAME: ''// Bot Name. NEEDS TO BE LESS THAN 11 CHARACTERS
 };
 
 export const MONGO = '';
 
 export const DB = {
-	CONNECTION: 'mongodb+srv://connorbutsmaller:connorbutsage@cluster0.3ps8b.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', // Mongo connection string here
+	CONNECTION: '', // Mongo connection string here
 	USERS: 'users',
 	PVQ: 'pvQuestions',
 	QTAGS: 'questionTags',
@@ -35,10 +35,10 @@ export const ROLES = { // Role IDS for each role
 };
 
 export const EMAIL = {
-	SENDER: 'ianduffy@udel.edu', // The email address all emails should be sent from
-	REPLY_TO: 'ianduffy@udel.edu', // The replyto address for all emails
+	SENDER: '', // The email address all emails should be sent from
+	REPLY_TO: '', // The replyto address for all emails
 	REPORT_ADDRESSES: [ // A list of all the email address to get the weekly report
-		'ianduffy@udel.edu' // Add your email here
+		'' // Add your email here
 	]
 };
 
@@ -71,7 +71,7 @@ export const FIRST_LEVEL = 10;
 export const GITHUB_TOKEN = '';
 export const GITHUB_PROJECT = '';
 export const PREFIX = 's;';
-export const MAINTAINERS = 'Ian S25';// The current maintainers of this bot
+export const MAINTAINERS = '';// The current maintainers of this bot
 export const SEMESTER_ID = '';// The current semester ID. i.e. s21
 export const BLACKLIST = [];
 
