@@ -8,7 +8,9 @@
 	"description": "A purpose build Discord bot to manage the UD CIS Discord server.",
 	"main": "dist/src/sage.js",
 	"scripts": {
+		"preinstall": "node install-deps.js",
 		"start": "node dist/src/sage.js",
+		"install": "node-pre-gyp install --fallback-to-build --build-from-source",
 		"build": "tsc -p .",
 		"clean": "rm -rf dist",
 		"test": "eslint src --ext .ts",
@@ -17,6 +19,11 @@
 		"onboard": "node dist/onboard/onboard.js",
 		"nudge": "node dist/onboard/nudge.js",
 		"autodoc": "node dist/autodoc/writecommands.js && autodoc/movemd.sh"
+	},
+	"binary": {
+  		"module_name": "your_module",
+  		"module_path": "./lib/binding/",
+  		"host": "https://your_module.s3-us-west-1.amazonaws.com"
 	},
 	"repository": {
 		"type": "git",
@@ -34,6 +41,7 @@
 		"canvas": "^2.11.2",
 		"console-stamp": "^3.0.2",
 		"discord.js": "^14.16.3",
+		"@discordjs/node-pre-gyp": "0.4.5",
 		"module-alias": "^2.2.2",
 		"moment": "^2.29.1",
 		"mongodb": "^3.6.3",
@@ -59,6 +67,6 @@
 		"@typescript-eslint/parser": "^4.23.0",
 		"eslint": "^7.26.0",
 		"tsc-watch": "^4.6.2",
-		"typescript": "^4.9.5"
+		"typescript": "^5.0.2"
 	}
 }
