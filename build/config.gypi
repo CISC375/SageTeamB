@@ -404,15 +404,15 @@
     "node_abi_napi": "napi",
     "node_napi_label": "node-v111",
     "metrics_registry": "https://registry.npmjs.org/",
-    "global_prefix": "/usr/local",
+    "global_prefix": "/Users/mikelutz/.local/share/nvm/v19.3.0",
     "local_prefix": "/Users/mikelutz/code/school/cisc-367/SageTeamB",
-    "globalconfig": "/usr/local/etc/npmrc",
+    "globalconfig": "/Users/mikelutz/.local/share/nvm/v19.3.0/etc/npmrc",
     "engine_strict": "true",
     "userconfig": "/Users/mikelutz/.npmrc",
     "init_module": "/Users/mikelutz/.npm-init.js",
-    "node_gyp": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js",
+    "node_gyp": "/Users/mikelutz/.local/share/nvm/v19.3.0/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js",
     "cache": "/Users/mikelutz/.npm",
     "user_agent": "npm/9.2.0 node/v19.3.0 darwin arm64 workspaces/false",
-    "prefix": "/usr/local"
+    "prefix": "/Users/mikelutz/.local/share/nvm/v19.3.0"
   }
 }
