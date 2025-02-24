@@ -1,13 +1,13 @@
 export const BOT = {
-	TOKEN: '', // Bot token here
-	CLIENT_ID: '', // Client ID here
-	NAME: ''// Bot Name. NEEDS TO BE LESS THAN 11 CHARACTERS
+	TOKEN: '14ee48beec63960222774ae62f1e9577030b0874bf343c36f955ee742d03c374', // Bot token here
+	CLIENT_ID: '1340017993954103358', // Client ID here
+	NAME: 'dustinbot'// Bot Name. NEEDS TO BE LESS THAN 11 CHARACTERS
 };
 
 export const MONGO = '';
 
 export const DB = {
-	CONNECTION: '', // Mongo connection string here
+	CONNECTION: 'mongodb+srv://Dustin2:Dustin2289@cluster0.3ps8b.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', // Mongo connection string here
 	USERS: 'users',
 	PVQ: 'pvQuestions',
 	QTAGS: 'questionTags',
@@ -51,7 +51,7 @@ export const CHANNELS = { // Channel IDs
 	SAGE: '1339670961951215678',
 	ANNOUNCEMENTS: '1339670980087251065',
 	ARCHIVE: '1339670989709115524',
-	ROLE_SELECT: '1339670989709115524'
+	ROLE_SELECT: '1339671002170265650'
 };
 
 export const ROLE_DROPDOWNS = {
@@ -71,8 +71,8 @@ export const FIRST_LEVEL = 10;
 export const GITHUB_TOKEN = '';
 export const GITHUB_PROJECT = '';
 export const PREFIX = 's;';
-export const MAINTAINERS = '';// The current maintainers of this bot
-export const SEMESTER_ID = '';// The current semester ID. i.e. s21
+export const MAINTAINERS = 'Dustin';// The current maintainers of this bot
+export const SEMESTER_ID = 's25';// The current semester ID. i.e. s21
 export const BLACKLIST = [];
 
 export const APP_ID = ''; // Adzuna API app ID
