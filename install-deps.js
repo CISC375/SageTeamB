@@ -1,6 +1,6 @@
-const os = require('os').platform();
 const { spawnSync } = require('child_process');
 const path = require('path');
+const os = process.platform;
 
 const isWindows = process.platform === 'win32';
 
