@@ -1,83 +1,141 @@
-import { ApplicationCommandOptionData, ApplicationCommandOptionType, ChatInputCommandInteraction, EmbedBuilder, InteractionResponse } from 'discord.js';
+import { 
+    ApplicationCommandOptionData, 
+    ApplicationCommandOptionType, 
+    ChatInputCommandInteraction, 
+    EmbedBuilder, 
+    ActionRowBuilder, 
+    StringSelectMenuBuilder, 
+    StringSelectMenuInteraction, 
+    Client,
+    Interaction
+} from 'discord.js';
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 
 export default class extends Command {
-	description = 'Fetch the latest file from a Canvas course';
-	runInDM?: true;
-	options: ApplicationCommandOptionData[] = [
-		{
-			name: 'course',
-			description: 'The name of the course',
-			type: ApplicationCommandOptionType.String,
-			required: true
-		}
-	];
+    description = 'Fetch the latest file from a Canvas course';
+    runInDM?: true;
+    options: ApplicationCommandOptionData[] = [
+        {
+            name: 'search_term',
+            description: 'Search term to filter files',
+            type: ApplicationCommandOptionType.String,  // Required string option for search term
+            required: true
+        }
+    ];
 
-	async run(interaction: ChatInputCommandInteraction): Promise<InteractionResponse<boolean> | void> {
-		const courseName = interaction.options.getString('course');
-		console.log(`Received course name: ${courseName}`);
+    async run(interaction: ChatInputCommandInteraction): Promise<void> {
+        const canvasToken = '25~n29E3YGf3YD6rtGxyTWy7MkFrehA7UwZVk3xmvaUN7mGtz9UJTYTuH4EtwQANVE8';
+        const baseUrl = 'https://udel.instructure.com/api/v1/courses?page=1&per_page=100';
 
-		const canvasToken = '25~n29E3YGf3YD6rtGxyTWy7MkFrehA7UwZVk3xmvaUN7mGtz9UJTYTuH4EtwQANVE8';
-		const baseUrl = 'https://udel.instructure.com/api/v1/courses?page=1&per_page=100';
+        try {
+            // Get search term from interaction
+            const searchTerm = interaction.options.getString('search_term');
+            console.log('Search Term:', searchTerm); // Log the search term
 
-		try {
-			// Step 1: Fetch courses with pagination parameters
-			console.log('Fetching courses from Canvas with page=1 and per_page=100...');
-			const response = await axios.get(baseUrl, {
-				headers: { Authorization: `Bearer ${canvasToken}` }
-			});
+            // No longer ephemeral, so remove the `ephemeral: true` here
+            await interaction.deferReply();
 
-			const allCourses = response.data;
-			console.log(`Fetched ${allCourses.length} courses`);
+            console.log('Fetching all courses...');
+            const response = await axios.get(baseUrl, {
+                headers: { Authorization: `Bearer ${canvasToken}` }
+            });
+            const allCourses = response.data;
+            console.log(`Fetched ${allCourses.length} courses`);
 
-			// Step 2: Find the best-matching course ID
-			console.log(courseName);
-			const matchedCourse = allCourses.find(course =>
-				(course.name?.toLowerCase() ?? "").includes(courseName.toLowerCase())
-			);			
+            const validCourses = [];
+            for (const course of allCourses) {
+                const enrollmentUrl = `https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`;
+                try {
+                    await axios.get(enrollmentUrl, {
+                        headers: { Authorization: `Bearer ${canvasToken}` }
+                    });
+                    validCourses.push({ id: course.id, name: course.name });
+                } catch (error) {
+                    if (error.response?.status !== 403) {
+                        console.error(`Error checking enrollment for course ${course.id}:`, error.message);
+                    }
+                }
+            }
 
-			if (!matchedCourse) {
-				console.log(`No matching course found for: ${courseName}`);
-				return interaction.reply({ content: `No course found matching "${courseName}".`, ephemeral: true });
-			}
+            if (validCourses.length === 0) {
+                await interaction.editReply({ content: 'No active courses found.' });
+                return;
+            }
 
-			const courseId = matchedCourse.id;
-			console.log(`Matched course: ${matchedCourse.name} (ID: ${courseId})`);
+            const courseOptions = validCourses.map(course => ({
+                label: course.name,
+                value: course.id.toString()
+            }));
 
-			// Step 3: Fetch files for the matched course
-			console.log(`Fetching files for course ID: ${courseId}`);
-			const filesResponse = await axios.get(`https://udel.instructure.com/api/v1/courses/${courseId}/files`, {
-				headers: { Authorization: `Bearer ${canvasToken}` }
-			});
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('course_select')
+                .setPlaceholder('Select a course')
+                .addOptions(courseOptions);
 
-			const files = filesResponse.data;
-			console.log(`Fetched ${files.length} files from course`);
+            const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+            await interaction.editReply({ content: 'Select a course:', components: [row] });
 
-			if (files.length === 0) {
-				return interaction.reply({ content: 'No files found for this course.', ephemeral: true });
-			}
-			console.log(files)
+            // Pass the searchTerm along with the interaction handler
+            // Now call setupInteractionHandler here by passing the client and searchTerm
+            setupInteractionHandler(interaction.client, searchTerm);
 
-			// Step 4: Get the first file's public URL
-			console.log(`Fetching file URL for: ${files[0].display_name}`);
-			const fileUrlResponse = await axios.get(files[0].url, {
-				headers: { Authorization: `Bearer ${canvasToken}` }
-			});
+        } catch (error) {
+            console.error('Error fetching courses:', error.response ? error.response.data : error.message);
+            await interaction.editReply({ content: 'Failed to fetch courses.' });
+        }
+    }
+}
 
-			console.log("File URL retrieved:", fileUrlResponse.config.url);
+export async function handleCourseSelection(interaction: StringSelectMenuInteraction, searchTerm: string) {
+    try {
+        // Make this reply visible to the chat (no ephemeral)
+        await interaction.deferReply();
 
-			// Step 5: Reply with the first file's link
-			const embed = new EmbedBuilder()
-				.setColor('#3CD6A3')
-				.setTitle(files[0].display_name)
-				.setDescription(`[Download File](${fileUrlResponse.config.url})`);
+        console.log('Search Term inside handleCourseSelection:', searchTerm); // Log search term
 
-			return interaction.reply({ embeds: [embed], ephemeral: true });
+        const courseId = interaction.values[0];
+        const canvasToken = '25~n29E3YGf3YD6rtGxyTWy7MkFrehA7UwZVk3xmvaUN7mGtz9UJTYTuH4EtwQANVE8';
+        const filesUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/files`;
 
-		} catch (error) {
-			console.error('Error fetching course files:', error.response ? error.response.data : error.message);
-			return interaction.reply({ content: 'Failed to fetch course files.', ephemeral: true });
-		}
-	}
+        console.log(`Fetching files for course ID: ${courseId}`);
+        console.log(`Search Term: ${searchTerm}`);  // Log search term with each file fetch
+        const filesResponse = await axios.get(filesUrl, {
+            headers: { Authorization: `Bearer ${canvasToken}` }
+        });
+
+        const files = filesResponse.data;
+        console.log(`Fetched ${files.length} files from course`);
+
+        if (files.length === 0) {
+            await interaction.editReply({ content: 'No files found for this course.' });
+            return;
+        }
+
+        const fileUrlResponse = await axios.get(files[0].url, {
+            headers: { Authorization: `Bearer ${canvasToken}` }
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor('#3CD6A3')
+            .setTitle(files[0].display_name)
+            .setDescription(`[Download File](${fileUrlResponse.config.url})`);
+
+        console.log("Sending embed response...");
+        await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+        console.error('Error fetching course files:', error.response ? error.response.data : error.message);
+        await interaction.editReply({ content: 'Failed to fetch course files.' });
+    }
+}
+
+// Ensure the bot listens for the course selection interaction
+// Now accepts the client instance
+export function setupInteractionHandler(client: Client, searchTerm?: string) {
+    client.on('interactionCreate', async (interaction: Interaction) => {
+        if (interaction.isStringSelectMenu() && interaction.customId === 'course_select') {
+            await handleCourseSelection(interaction as StringSelectMenuInteraction, searchTerm);  // Pass search term to the handler
+        }
+    });
 }
