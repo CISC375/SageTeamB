@@ -90,6 +90,7 @@ export default class extends Command {
 export async function handleCourseSelection(interaction: StringSelectMenuInteraction, searchTerm: string) {
     try {
         // Make this reply visible to the chat (no ephemeral)
+		
         await interaction.deferReply();
 
         console.log('Search Term inside handleCourseSelection:', searchTerm); // Log search term
