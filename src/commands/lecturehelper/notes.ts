@@ -106,7 +106,7 @@ export async function handleCourseSelection(interaction: StringSelectMenuInterac
 			return;
 		}
 
-		let matchedFiles = [];
+		const matchedFiles = [];
 
 		for (const folder of folders) {
 			const filesUrl = `https://udel.instructure.com/api/v1/folders/${folder.id}/files`;
@@ -144,7 +144,7 @@ export async function handleCourseSelection(interaction: StringSelectMenuInterac
     	return `(${index + 1} of ${matchedFiles.length}) ${icon} ${file.display_name} (${size}) — [Download File](${file.url})`;
 	}).join(`\n\n`);
 
-		//const latestFile = matchedFiles[0];
+		// const latestFile = matchedFiles[0];
         const embed = new EmbedBuilder()
     		.setColor('#3CD6A3')
     		.setTitle(`Found file(s) matching: "${searchTerm}"`)

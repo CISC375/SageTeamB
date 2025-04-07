@@ -1,3 +1,4 @@
+/* eslint-disable no-constant-condition */
 import {
 	ApplicationCommandOptionData,
 	ApplicationCommandOptionType,
@@ -88,6 +89,7 @@ export default class extends Command {
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
+
 }
 
 export function setupMissingLectureHandler(client: Client) {
@@ -112,7 +114,7 @@ export function setupMissingLectureHandler(client: Client) {
 			// Fetch all folders
 			const folders = await getAllFolders(courseId, canvasToken);
 
-			let matchedFiles = [];
+			const matchedFiles = [];
 
 			for (const folder of folders) {
 				const filesUrl = `${CANVAS.BASE_URL}/folders/${folder.id}/files`;
@@ -156,11 +158,11 @@ export function setupMissingLectureHandler(client: Client) {
 				// Check if assignment is due during the week
 				const dueDate = a.due_at ? new Date(a.due_at) : null;
 				const isDueThisWeek = dueDate && dueDate >= weekStart && dueDate <= weekEnd;
-				
+
 				// Check if assignment was created during the week
 				const createdDate = a.created_at ? new Date(a.created_at) : null;
 				const isCreatedThisWeek = createdDate && createdDate >= weekStart && createdDate <= weekEnd;
-				
+
 				// Include if either due or created during the week
 				return isDueThisWeek || isCreatedThisWeek;
 			});
