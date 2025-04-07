@@ -1,90 +1,157 @@
-import { ApplicationCommandOptionData, ApplicationCommandOptionType, ChatInputCommandInteraction, EmbedBuilder, InteractionResponse} from 'discord.js';
+import {
+	ApplicationCommandOptionData,
+	ApplicationCommandOptionType,
+	ChatInputCommandInteraction,
+	EmbedBuilder,
+	ActionRowBuilder,
+	StringSelectMenuBuilder,
+	StringSelectMenuInteraction,
+	Client,
+	Interaction
+} from 'discord.js';
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 
-
 export default class extends Command {
-   description = 'Fetch upcoming assignments from a canvas course';
-   runInDM?: true;
-   options: ApplicationCommandOptionData[] = [
-       {
-           name: 'course',
-           description: 'The name of the course',
-           type: ApplicationCommandOptionType.String,
-           required: true
-       }
-   ];
+	description = 'Fetch upcoming assignments from a Canvas course';
+	runInDM = true;
+	options: ApplicationCommandOptionData[] = [
+		{
+			name: 'search_term',
+			description: 'Optional keyword to filter assignments',
+			type: ApplicationCommandOptionType.String,
+			required: false
+		}
+	];
+
+	async run(interaction: ChatInputCommandInteraction): Promise<void> {
+		const canvasToken = '25~6cH2nyRfByB8RvhBV4MARyXwC3afxT9c6VKvDyRRK7ZMtmynBUG3AN38YLW37M94';
+		const baseUrl = 'https://udel.instructure.com/api/v1/courses?page=1&per_page=100';
+
+		try {
+			const searchTerm = interaction.options.getString('search_term') ?? '';
+			await interaction.deferReply({ ephemeral: true });
+
+			const response = await axios.get(baseUrl, {
+				headers: { Authorization: `Bearer ${canvasToken}` }
+			});
+			const allCourses = response.data;
+
+			const validCourses: { id: number; name: string }[] = [];
+
+			await Promise.all(
+				allCourses.map((course: any) =>
+					axios
+						.get(`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`, {
+							headers: { Authorization: `Bearer ${canvasToken}` }
+						})
+						.then(() => validCourses.push({ id: course.id, name: course.name }))
+						.catch((error) => {
+							if (error.response?.status !== 403) {
+								console.error(`Error checking course ${course.id}:`, error.message);
+							}
+						})
+				)
+			);
+
+			// for (const course of allCourses) {
+			// 	const enrollmentUrl = `https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`;
+			// 	try {
+			// 		await axios.get(enrollmentUrl, {
+			// 			headers: { Authorization: `Bearer ${canvasToken}` }
+			// 		});
+			// 		validCourses.push({ id: course.id, name: course.name });
+			// 	} catch (error) {
+			// 		if (error.response?.status !== 403) {
+			// 			console.error(`Error checking enrollment for course ${course.id}:`, error.message);
+			// 		}
+			// 	}
+			// }
+
+			if (validCourses.length === 0) {
+				await interaction.editReply({ content: 'No active courses found.' });
+				return;
+			}
+
+			const courseOptions = validCourses.map(course => ({
+				label: course.name,
+				value: course.id.toString()
+			}));
+
+			const selectMenu = new StringSelectMenuBuilder()
+				.setCustomId('assignment_course_select')
+				.setPlaceholder('Select a course')
+				.addOptions(courseOptions.slice(0, 25));
+
+			const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+			await interaction.editReply({ content: 'Select a course:', components: [row] });
+
+			// Set up handler using the dropdown
+			setupHomeworkDropdownHandler(interaction.client, searchTerm);
+
+		} catch (error) {
+			console.error('Error fetching courses:', error.response ? error.response.data : error.message);
+			await interaction.editReply({ content: 'Failed to fetch courses.' });
+		}
+	}
+}
 
 
-   async run(interaction: ChatInputCommandInteraction): Promise<InteractionResponse<boolean> | void> {
-       const courseName = interaction.options.getString('course');
-       console.log(`Received course name: ${courseName}`);
+export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction, searchTerm: string) {
+	const canvasToken = '25~6cH2nyRfByB8RvhBV4MARyXwC3afxT9c6VKvDyRRK7ZMtmynBUG3AN38YLW37M94';
+
+	try {
+		await interaction.deferReply({ ephemeral: true });
+
+		const courseId = interaction.values[0];
+		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
+
+		const assignmentsResponse = await axios.get(assignmentsUrl, {
+			headers: { Authorization: `Bearer ${canvasToken}` }
+		});
+
+		const assignments = assignmentsResponse.data;
+		const now = new Date();
+
+		const upcoming = assignments
+			.filter((a: any) => a.due_at && new Date(a.due_at) > now)
+			.sort((a: any, b: any) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+			.slice(0, 5);
+
+		if (!upcoming.length) {
+			await interaction.editReply({ content: 'No upcoming assignments found.' });
+			return;
+		}
+
+		const courseDetails = await axios.get(`https://udel.instructure.com/api/v1/courses/${courseId}`, {
+			headers: { Authorization: `Bearer ${canvasToken}` }
+		});
+
+		const embed = new EmbedBuilder()
+			.setColor('#3CD6A3')
+			.setTitle(`Upcoming Assignments for ${courseDetails.data.name}`)
+			.setDescription(
+				upcoming.map((a: any) =>
+					`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
+				).join('\n\n')
+			);
+
+		await interaction.editReply({ embeds: [embed] });
+
+	} catch (error) {
+		console.error('Error fetching assignments:', error.response ? error.response.data : error.message);
+		await interaction.editReply({ content: 'Failed to fetch assignments.' });
+	}
+}
 
 
-       const canvasToken = 'insert token';
-       const baseUrl = 'https://udel.instructure.com/api/v1/courses';
-
-
-       try {
-           console.log('Fetching courses from Canvas...');
-           const response = await axios.get(`${baseUrl}?per_page=100`, {
-               headers: { Authorization: `Bearer ${canvasToken}` }
-           });
-           const allCourses = response.data;
-
-
-           const matchedCourse = allCourses.find(course =>
-           (course.name?.toLowerCase() ?? "").includes(courseName.toLowerCase())
-           );
-
-
-           if(!matchedCourse) {
-               return interaction.reply({ content: `No course found matching "${courseName}".`, ephemeral: true });
-           }
-
-
-           const courseId = matchedCourse.id;
-           console.log(`Matched course: ${matchedCourse.name} (ID: ${courseId})`);
-
-
-           // Fetch the assignments
-           const assignmentsResponse = await axios.get(`${baseUrl}/${courseId}/assignments`, {
-               headers: { Authorization: `Bearer ${canvasToken}` }
-           });
-           const assignments = assignmentsResponse.data;
-
-
-           if(!assignments.length) {
-               return interaction.reply({ content: 'No assignemnts found for this course.', ephemeral: true });
-           }
-
-
-           // Filter upcoming asssignments that are not due yet. Slice limits to only next 5 assignments
-           const now = new Date();
-           const upcoming = assignments
-               .filter(a => a.due_at && new Date(a.due_at) > now)
-               .sort((a,b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
-               .slice(0,5);
-
-
-               if (!upcoming.length) {
-                   return interaction.reply({ content: 'No upcoming assignments found.', ephemeral: true });
-               }
-
-
-               const embed = new EmbedBuilder()
-               .setColor('#3CD6A3')
-               .setTitle(`Upcoming Assignments for ${matchedCourse.name}`)
-               .setDescription(
-                   upcoming.map(a => `📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})\n`).join('\n')
-               );
-          
-           return interaction.reply({ embeds: [embed], ephemeral: true });
-
-
-           } catch (error) {
-               console.error('Error fetching assignments:', error.response?.data || error.message);
-               return interaction.reply({ content: 'Failed to fetch assignments.', ephemeral: true });
-           }
-       }
-   }
+export function setupHomeworkDropdownHandler(client: Client, searchTerm: string) {
+	client.on('interactionCreate', async (interaction: Interaction) => {
+		if (
+			interaction.isStringSelectMenu() &&
+			interaction.customId === 'assignment_course_select'
+		) {
+			await handleAssignmentCourseSelection(interaction as StringSelectMenuInteraction, searchTerm);
+		}
+	});
+}
