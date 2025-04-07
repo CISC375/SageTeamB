@@ -33,7 +33,7 @@ export default class extends Command {
 
     async run(interaction: ChatInputCommandInteraction): Promise<void> {
         const canvasToken = CANVAS.TOKEN;
-        const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100`;
+        const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active`;
 
         try {
             // Get search term from interaction
@@ -47,30 +47,20 @@ export default class extends Command {
             const response = await axios.get(baseUrl, {
                 headers: { Authorization: `Bearer ${canvasToken}` }
             });
-            const allCourses = response.data;
-            console.log(`Fetched ${allCourses.length} courses`);
+            const activeCourses = response.data;
+            console.log(`Fetched ${activeCourses.length} courses`);
 
-            const validCourses = [];
-            for (const course of allCourses) {
-                const enrollmentUrl = `${CANVAS.BASE_URL}/courses/${course.id}/enrollments?...`;
-                try {
-                    await axios.get(enrollmentUrl, {
-                        headers: { Authorization: `Bearer ${canvasToken}` }
-                    });
-                    validCourses.push({ id: course.id, name: course.name });
-                } catch (error) {
-                    if (error.response?.status !== 403) {
-                        console.error(`Error checking enrollment for course ${course.id}:`, error.message);
-                    }
-                }
+            const activeCoursesCleaned = [];
+            for (const course of activeCourses) {
+                activeCoursesCleaned.push({ id: course.id, name: course.name });
             }
 
-            if (validCourses.length === 0) {
+            if (activeCoursesCleaned.length === 0) {
                 await interaction.editReply({ content: 'No active courses found.' });
                 return;
             }
 
-            const courseOptions = validCourses.map(course => ({
+            const courseOptions = activeCoursesCleaned.map(course => ({
                 label: course.name,
                 value: course.id.toString()
             }));
