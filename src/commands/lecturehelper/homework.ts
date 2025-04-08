@@ -39,20 +39,7 @@ export default class extends Command {
 
 			const validCourses: { id: number; name: string }[] = [];
 
-			await Promise.all(
-				allCourses.map((course: any) =>
-					axios
-						.get(`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`, {
-							headers: { Authorization: `Bearer ${canvasToken}` }
-						})
-						.then(() => validCourses.push({ id: course.id, name: course.name }))
-						.catch((error) => {
-							if (error.response?.status !== 403) {
-								console.error(`Error checking course ${course.id}:`, error.message);
-							}
-						})
-				)
-			);
+			
 
 			// for (const course of allCourses) {
 			// 	const enrollmentUrl = `https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`;
@@ -67,6 +54,21 @@ export default class extends Command {
 			// 		}
 			// 	}
 			// }
+
+			await Promise.all(
+				allCourses.map((course: any) =>
+					axios
+						.get(`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`, {
+							headers: { Authorization: `Bearer ${canvasToken}` }
+						})
+						.then(() => validCourses.push({ id: course.id, name: course.name }))
+						.catch((error) => {
+							if (error.response?.status !== 403) {
+								console.error(`Error checking course ${course.id}:`, error.message);
+							}
+						})
+				)
+			);
 
 			if (validCourses.length === 0) {
 				await interaction.editReply({ content: 'No active courses found.' });
