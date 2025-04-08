@@ -12,16 +12,19 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 
+// prevents reregistering handler
+let handlerRegistered = false;
+
 export default class extends Command {
 	description = 'Fetch upcoming assignments from a Canvas course';
 	runInDM = true;
 	options: ApplicationCommandOptionData[] = [
-		{
-			name: 'search_term',
-			description: 'Optional keyword to filter assignments',
-			type: ApplicationCommandOptionType.String,
-			required: false
-		}
+		// {
+		// 	name: 'search_term',
+		// 	description: 'Optional keyword to filter assignments',
+		// 	type: ApplicationCommandOptionType.String,
+		// 	required: false
+		// }
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -29,7 +32,7 @@ export default class extends Command {
 		const baseUrl = 'https://udel.instructure.com/api/v1/courses?page=1&per_page=100';
 
 		try {
-			const searchTerm = interaction.options.getString('search_term') ?? '';
+			// const searchTerm = interaction.options.getString('search_term') ?? '';
 			await interaction.deferReply({ ephemeral: true });
 
 			const response = await axios.get(baseUrl, {
@@ -76,7 +79,7 @@ export default class extends Command {
 			}
 
 			const courseOptions = validCourses.map(course => ({
-				label: course.name,
+				label: course.name.slice(0, 100),
 				value: course.id.toString()
 			}));
 
@@ -89,7 +92,10 @@ export default class extends Command {
 			await interaction.editReply({ content: 'Select a course:', components: [row] });
 
 			// Set up handler using the dropdown
-			setupHomeworkDropdownHandler(interaction.client, searchTerm);
+			if (!handlerRegistered) {
+				setupHomeworkDropdownHandler(interaction.client);
+				handlerRegistered = true;
+			}
 
 		} catch (error) {
 			console.error('Error fetching courses:', error.response ? error.response.data : error.message);
@@ -99,7 +105,7 @@ export default class extends Command {
 }
 
 
-export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction, searchTerm: string) {
+export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
 	const canvasToken = '25~6cH2nyRfByB8RvhBV4MARyXwC3afxT9c6VKvDyRRK7ZMtmynBUG3AN38YLW37M94';
 
 	try {
@@ -147,13 +153,13 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 }
 
 
-export function setupHomeworkDropdownHandler(client: Client, searchTerm: string) {
+export function setupHomeworkDropdownHandler(client: Client) {
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (
 			interaction.isStringSelectMenu() &&
 			interaction.customId === 'assignment_course_select'
 		) {
-			await handleAssignmentCourseSelection(interaction as StringSelectMenuInteraction, searchTerm);
+			await handleAssignmentCourseSelection(interaction as StringSelectMenuInteraction);
 		}
 	});
 }
