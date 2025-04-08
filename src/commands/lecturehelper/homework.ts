@@ -12,6 +12,19 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 
+interface CanvasCourse {
+	id: number;
+	name: string;
+}
+
+// interfaces to avoid the any type
+
+interface CanvasAssignment {
+	id: number;
+	name: string;
+	due_at: string;
+	html_url: string;
+}
 // prevents reregistering handler
 let handlerRegistered = false;
 
@@ -35,12 +48,12 @@ export default class extends Command {
 			// const searchTerm = interaction.options.getString('search_term') ?? '';
 			await interaction.deferReply({ ephemeral: true });
 
-			const response = await axios.get(baseUrl, {
+			const response = await axios.get<CanvasCourse[]>(baseUrl, {
 				headers: { Authorization: `Bearer ${canvasToken}` }
 			});
 			const allCourses = response.data;
 
-			const validCourses: { id: number; name: string }[] = [];
+			const validCourses: CanvasCourse[] = [];
 
 			
 
@@ -59,14 +72,14 @@ export default class extends Command {
 			// }
 
 			await Promise.all(
-				allCourses.map((course: any) =>
+				allCourses.map((course: CanvasCourse) =>
 					axios
 						.get(`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`, {
 							headers: { Authorization: `Bearer ${canvasToken}` }
 						})
 						.then(() => validCourses.push({ id: course.id, name: course.name }))
 						.catch((error) => {
-							if (error.response?.status !== 403) {
+							if (axios.isAxiosError(error) && error.response?.status !== 403) {
 								console.error(`Error checking course ${course.id}:`, error.message);
 							}
 						})
@@ -97,8 +110,12 @@ export default class extends Command {
 				handlerRegistered = true;
 			}
 
-		} catch (error) {
-			console.error('Error fetching courses:', error.response ? error.response.data : error.message);
+		} catch (error: unknown) {
+			const message = axios.isAxiosError(error)
+				? error.response?.data ?? error.message
+				: (error as Error).message;
+
+			console.error('Error fetching courses:', message);
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
@@ -114,7 +131,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const courseId = interaction.values[0];
 		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
 
-		const assignmentsResponse = await axios.get(assignmentsUrl, {
+		const assignmentsResponse = await axios.get<CanvasAssignment[]>(assignmentsUrl, {
 			headers: { Authorization: `Bearer ${canvasToken}` }
 		});
 
@@ -122,8 +139,8 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const now = new Date();
 
 		const upcoming = assignments
-			.filter((a: any) => a.due_at && new Date(a.due_at) > now)
-			.sort((a: any, b: any) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+			.filter(a => a.due_at && new Date(a.due_at) > now)
+			.sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
 			.slice(0, 5);
 
 		if (!upcoming.length) {
@@ -131,7 +148,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			return;
 		}
 
-		const courseDetails = await axios.get(`https://udel.instructure.com/api/v1/courses/${courseId}`, {
+		const courseDetails = await axios.get<CanvasCourse>(`https://udel.instructure.com/api/v1/courses/${courseId}`, {
 			headers: { Authorization: `Bearer ${canvasToken}` }
 		});
 
@@ -139,25 +156,29 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			.setColor('#3CD6A3')
 			.setTitle(`Upcoming Assignments for ${courseDetails.data.name}`)
 			.setDescription(
-				upcoming.map((a: any) =>
+				upcoming.map((a) =>
 					`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
 				).join('\n\n')
 			);
 
 		await interaction.editReply({ embeds: [embed] });
 
-	} catch (error) {
-		console.error('Error fetching assignments:', error.response ? error.response.data : error.message);
+	} catch (error: unknown) {
+		const message = axios.isAxiosError(error)
+			? error.response?.data ?? error.message
+			: (error as Error).message;
+
+		console.error('Error fetching assignments:', message);
 		await interaction.editReply({ content: 'Failed to fetch assignments.' });
 	}
 }
 
 
-export function setupHomeworkDropdownHandler(client: Client) {
+export function setupHomeworkDropdownHandler(client: Client): void {
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (
-			interaction.isStringSelectMenu() &&
-			interaction.customId === 'assignment_course_select'
+			interaction.isStringSelectMenu()
+			&& interaction.customId === 'assignment_course_select'
 		) {
 			await handleAssignmentCourseSelection(interaction as StringSelectMenuInteraction);
 		}
