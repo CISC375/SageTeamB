@@ -11,6 +11,8 @@ import {
 } from 'discord.js';
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
+import { CANVAS } from '../../../config';
+
 
 interface CanvasCourse {
 	id: number;
@@ -41,8 +43,8 @@ export default class extends Command {
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = '25~6cH2nyRfByB8RvhBV4MARyXwC3afxT9c6VKvDyRRK7ZMtmynBUG3AN38YLW37M94';
-		const baseUrl = 'https://udel.instructure.com/api/v1/courses?page=1&per_page=100';
+		const canvasToken = CANVAS.TOKEN;
+		const baseUrl = CANVAS.BASE_URL;
 
 		try {
 			// const searchTerm = interaction.options.getString('search_term') ?? '';
@@ -123,7 +125,7 @@ export default class extends Command {
 
 
 export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
-	const canvasToken = '25~6cH2nyRfByB8RvhBV4MARyXwC3afxT9c6VKvDyRRK7ZMtmynBUG3AN38YLW37M94';
+	const canvasToken = CANVAS.TOKEN;
 
 	try {
 		await interaction.deferReply({ ephemeral: true });
