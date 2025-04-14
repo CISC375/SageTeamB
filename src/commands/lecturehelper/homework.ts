@@ -44,7 +44,7 @@ export default class extends Command {
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = CANVAS.BASE_URL;
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active;`
 
 		try {
 			// const searchTerm = interaction.options.getString('search_term') ?? '';

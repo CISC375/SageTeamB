@@ -134,7 +134,7 @@ export function setupMissingLectureHandler(client: Client) {
 			matchedFiles.sort((a, b) => a.display_name.localeCompare(b.display_name));
 
 			const notes = matchedFiles.filter(file => file.display_name.toLowerCase().includes('note'));
-			const recordings = matchedFiles.filter(file => /zoom|recording|video/i.test(file.display_name));
+			const recordings = matchedFiles.filter(file => /zoom|recording|video/i.test(file.display_name.toLowerCase()));
 			const homework = matchedFiles.filter(file =>
 				/hw|homework|assignment/i.test(file.display_name.toLowerCase())
 			);
