@@ -9,7 +9,7 @@ const CHOICES = ['rock', 'paper', 'scissors'];
 
 export default class extends Command {
 
-	description = `The ultimate battle of human vs program. Can you best ${BOT.NAME} in a round of rock paper scissors?`;
+	description = `desc too long causing errors`;
 
 	async run(interaction: ChatInputCommandInteraction): Promise<InteractionResponse<boolean> | void> {
 		const choiceEmbed = new EmbedBuilder()
