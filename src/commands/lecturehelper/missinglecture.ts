@@ -11,7 +11,8 @@ import {
 } from 'discord.js';
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
-import { CANVAS } from '../../../config';
+import { CANVAS } from '@root/config';
+import { getUserCanvasToken } from './authenticatecanvas';
 
 export default class extends Command {
 
@@ -28,7 +29,11 @@ export default class extends Command {
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
+		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
+		if (!canvasToken) {
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first.', ephemeral: true });
+			return;
+		}
 		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100`;
 		const missedDateString = interaction.options.getString('date', true);
 
@@ -82,20 +87,20 @@ export default class extends Command {
 			const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 			await interaction.editReply({ content: 'Select a course:', components: [row] });
 
-			setupMissingLectureHandler(interaction.client);
+			setupMissingLectureHandler(interaction.client, canvasToken);
 		} catch (error) {
 			console.error('Error fetching courses:', error.response ? error.response.data : error.message);
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
+
 }
 
-export function setupMissingLectureHandler(client: Client) {
+export function setupMissingLectureHandler(client: Client, canvasToken: string) {
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (!interaction.isStringSelectMenu() || interaction.customId !== 'missinglecture_select') return;
 
 		const [courseId, dateStr] = interaction.values[0].split('::');
-		const canvasToken = CANVAS.TOKEN;
 
 		const lectureDate = new Date(dateStr);
 		const weekStart = new Date(lectureDate);
@@ -112,7 +117,7 @@ export function setupMissingLectureHandler(client: Client) {
 			// Fetch all folders
 			const folders = await getAllFolders(courseId, canvasToken);
 
-			let matchedFiles = [];
+			const matchedFiles = [];
 
 			for (const folder of folders) {
 				const filesUrl = `${CANVAS.BASE_URL}/folders/${folder.id}/files`;
@@ -156,11 +161,11 @@ export function setupMissingLectureHandler(client: Client) {
 				// Check if assignment is due during the week
 				const dueDate = a.due_at ? new Date(a.due_at) : null;
 				const isDueThisWeek = dueDate && dueDate >= weekStart && dueDate <= weekEnd;
-				
+
 				// Check if assignment was created during the week
 				const createdDate = a.created_at ? new Date(a.created_at) : null;
 				const isCreatedThisWeek = createdDate && createdDate >= weekStart && createdDate <= weekEnd;
-				
+
 				// Include if either due or created during the week
 				return isDueThisWeek || isCreatedThisWeek;
 			});
