@@ -31,7 +31,7 @@ export default class extends Command {
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 		if (!canvasToken) {
-			await interaction.reply({ content: 'You need to authenticate your Canvas account first.', ephemeral: true });
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first, call /authenticatecanvas.', ephemeral: true });
 			return;
 		}
 		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100`;

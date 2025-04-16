@@ -31,7 +31,7 @@ export default class extends Command {
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 		if (!canvasToken) {
-			await interaction.reply({ content: 'You need to authenticate your Canvas account first.', ephemeral: true });
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first, run /authenticatecanvas.', ephemeral: true });
 			return;
 		}
 		setupInteractionHandler(interaction.client, canvasToken); // initialize handler first thing
