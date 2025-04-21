@@ -711,7 +711,7 @@ export default class extends Command {
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100`;
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active`;
 		const missedDateString = interaction.options.getString('date', true);
 
 		let missedDate: Date;
@@ -730,28 +730,20 @@ export default class extends Command {
 				headers: { Authorization: `Bearer ${canvasToken}` }
 			});
 
-			const allCourses = response.data;
-			const validCourses = [];
+			const activeCourses = response.data;
+			console.log(`Fetched ${activeCourses.length} courses`);
 
-			for (const course of allCourses) {
-				try {
-					await axios.get(`${CANVAS.BASE_URL}/courses/${course.id}/enrollments`, {
-						headers: { Authorization: `Bearer ${canvasToken}` }
-					});
-					validCourses.push({ id: course.id, name: course.name });
-				} catch (error) {
-					if (error.response?.status !== 403) {
-						console.error(`Error with course ${course.id}:`, error.message);
-					}
-				}
+			const activeCoursesCleaned = [];
+			for (const course of activeCourses) {
+				activeCoursesCleaned.push({ id: course.id, name: course.name });
 			}
 
-			if (validCourses.length === 0) {
-				await interaction.editReply({ content: `No active courses found.` });
+			if (activeCoursesCleaned.length === 0) {
+				await interaction.editReply({ content: 'No active courses found.' });
 				return;
 			}
 
-			const courseOptions = validCourses.map(course => ({
+			const courseOptions = activeCoursesCleaned.map(course => ({
 				label: course.name,
 				value: `${course.id}::${missedDateString}`
 			}));
