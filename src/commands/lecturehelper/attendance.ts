@@ -9,7 +9,6 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
-	User,
 	ApplicationCommandOptionType,
 	ApplicationCommandOptionData,
 	TextChannel,
@@ -28,6 +27,7 @@ type AttendanceRecord = {
 		username: string;
 	};
 	expiresAt: number;
+	classCode: string;
 	attendees: {
 		user: {
 			id: string;
@@ -51,6 +51,12 @@ export default class extends Command {
 			description: 'Duration of the attendance session in seconds (default 600)',
 			type: ApplicationCommandOptionType.Integer,
 			required: false
+		},
+		{
+			name: 'class_code',
+			description: 'Class code for the attendance session',
+			type: ApplicationCommandOptionType.String,
+			required: false
 		}
 	];
 
@@ -65,6 +71,7 @@ export default class extends Command {
 				id: interaction.user.id,
 				username: interaction.user.username
 			},
+			classCode: interaction.options.getString('class_code') ?? '',
 			expiresAt,
 			attendees: []
 		});
@@ -105,11 +112,11 @@ export default class extends Command {
 		}, 1000);
 
 		setTimeout(async () => {
-			const query = { _id: entryId };
-			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(query);
+			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
+				{ _id: entryId }
+			);
 			if (!session) return;
 
-			// activeAttendanceSessions.delete(interaction.channelId);
 			clearInterval(interval);
 
 			const disabledButton = ButtonBuilder.from(hereButton).setDisabled(true);
