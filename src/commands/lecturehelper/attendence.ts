@@ -23,12 +23,20 @@ import { ObjectId } from 'mongodb';
 
 type AttendanceRecord = {
 	code: string;
-	professor: User;
+	professor: {
+		id: string;
+		username: string;
+	};
 	expiresAt: number;
-	attendees: { user: User; timestamp: number }[];
+	attendees: {
+		user: {
+			id: string;
+			username: string;
+		},
+		timestamp: number
+	}[];
 };
 
-const activeAttendanceSessions = new Map<string, AttendanceRecord>();
 let initialized = false;
 
 export default class extends Command {
@@ -53,19 +61,16 @@ export default class extends Command {
 
 		const result = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).insertOne({
 			code,
-			professor: interaction.user,
+			professor: {
+				id: interaction.user.id,
+				username: interaction.user.username
+			},
 			expiresAt,
 			attendees: []
 		});
 		const entryId = result.insertedId;
 
 		setupAttendanceHandler(interaction.client, entryId);
-		activeAttendanceSessions.set(interaction.channelId, {
-			code,
-			professor: interaction.user,
-			expiresAt,
-			attendees: []
-		});
 
 		await interaction.reply({
 			content: `✅ Attendance session started!\n**Code:** \`${code}\`\nDuration: ${duration} seconds.\nStudents may now mark themselves present using \`/here\` or the button.`,
@@ -100,12 +105,11 @@ export default class extends Command {
 		}, 1000);
 
 		setTimeout(async () => {
-			// const session = activeAttendanceSessions.get(interaction.channelId);
-			const query = { _id: entryId, professor: interaction.user };
+			const query = { _id: entryId };
 			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(query);
 			if (!session) return;
 
-			activeAttendanceSessions.delete(interaction.channelId);
+			// activeAttendanceSessions.delete(interaction.channelId);
 			clearInterval(interval);
 
 			const disabledButton = ButtonBuilder.from(hereButton).setDisabled(true);
@@ -120,7 +124,7 @@ export default class extends Command {
 			const attendeeList
 				= session.attendees.length > 0
 					? session.attendees
-						.map((a) => `- ${a.user.tag} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
+						.map((a) => `- ${a.user.username} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
 						.join('\n')
 					: 'No one marked themselves present.';
 
@@ -137,9 +141,8 @@ function setupAttendanceHandler(client: Client, entryId: ObjectId) {
 
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (interaction.isButton() && interaction.customId === 'here_button') {
-			// const session = activeAttendanceSessions.get(interaction.channelId);
 			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
-				{ _id: entryId, professor: interaction.user }
+				{ _id: entryId }
 			);
 			if (!session || Date.now() > session.expiresAt) {
 				await interaction.reply({ content: '⏰ Attendance session has ended.', ephemeral: true });
@@ -171,9 +174,8 @@ function setupAttendanceHandler(client: Client, entryId: ObjectId) {
 
 async function handleStudentCheckIn(interaction: ModalSubmitInteraction, entryId: ObjectId) {
 	const submittedCode = interaction.fields.getTextInputValue('checkin_code');
-	// const session = activeAttendanceSessions.get(interaction.channelId);
 	const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
-		{ _id: entryId, professor: interaction.user }
+		{ _id: entryId }
 	);
 
 	await interaction.deferReply({ ephemeral: true });
@@ -197,15 +199,21 @@ async function handleStudentCheckIn(interaction: ModalSubmitInteraction, entryId
 		return;
 	}
 
-	attendees.push({ user: interaction.user, timestamp: Date.now() });
+	attendees.push({
+		user: {
+			id: interaction.user.id,
+			username: interaction.user.username
+		}, timestamp: Date.now()
+	});
 	await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).updateOne(
-		{ _id: entryId, professor: interaction.user },
+		{ _id: entryId },
 		{ $set: { attendees } }
 	);
 
 	await interaction.editReply({ content: '✅ You have been marked present!' });
 
-	await professor.send(
+	const professorUser = await interaction.client.users.fetch(professor.id);
+	await professorUser.send(
 		`📋 **${interaction.user.tag}** marked present in <#${interaction.channelId}> at ${new Date().toLocaleTimeString()}.`
 	);
 }
