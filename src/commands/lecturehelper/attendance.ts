@@ -9,27 +9,38 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
-	User,
 	ApplicationCommandOptionType,
 	ApplicationCommandOptionData,
 	TextChannel,
-	ApplicationCommandPermissions,
+	ApplicationCommandPermissions
 } from 'discord.js';
 
 import { Command } from '@lib/types/Command';
 import { ADMIN_PERMS, STAFF_PERMS } from '@root/src/lib/permissions';
+import { DB } from '@root/config';
+import { ObjectId } from 'mongodb';
 
 type AttendanceRecord = {
 	code: string;
-	professor: User;
+	professor: {
+		id: string;
+		username: string;
+	};
 	expiresAt: number;
-	attendees: { user: User; timestamp: number }[];
+	classCode: string;
+	attendees: {
+		user: {
+			id: string;
+			username: string;
+		},
+		timestamp: number
+	}[];
 };
 
-const activeAttendanceSessions = new Map<string, AttendanceRecord>();
 let initialized = false;
 
 export default class extends Command {
+
 	description = 'Start an attendance session';
 	runInDM = false;
 	permissions: ApplicationCommandPermissions[] = [ADMIN_PERMS, STAFF_PERMS];
@@ -39,27 +50,38 @@ export default class extends Command {
 			name: 'duration',
 			description: 'Duration of the attendance session in seconds (default 600)',
 			type: ApplicationCommandOptionType.Integer,
-			required: false,
+			required: false
 		},
+		{
+			name: 'class_code',
+			description: 'Class code for the attendance session',
+			type: ApplicationCommandOptionType.String,
+			required: false
+		}
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		setupAttendanceHandler(interaction.client);
-
 		const code = generateCode();
 		const duration = interaction.options.getInteger('duration') ?? 600;
-		const expiresAt = Date.now() + duration * 1000;
+		const expiresAt = Date.now() + (duration * 1000);
 
-		activeAttendanceSessions.set(interaction.channelId, {
+		const result = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).insertOne({
 			code,
-			professor: interaction.user,
+			professor: {
+				id: interaction.user.id,
+				username: interaction.user.username
+			},
+			classCode: interaction.options.getString('class_code') ?? '',
 			expiresAt,
-			attendees: [],
+			attendees: []
 		});
+		const entryId = result.insertedId;
+
+		setupAttendanceHandler(interaction.client, entryId);
 
 		await interaction.reply({
 			content: `✅ Attendance session started!\n**Code:** \`${code}\`\nDuration: ${duration} seconds.\nStudents may now mark themselves present using \`/here\` or the button.`,
-			ephemeral: true,
+			ephemeral: true
 		});
 
 		const hereButton = new ButtonBuilder()
@@ -71,7 +93,7 @@ export default class extends Command {
 
 		const countdownMessage = await interaction.channel?.send({
 			content: `📢 Students: Click the button below to mark yourself present!\n⏳ Time remaining: ${formatDuration(duration)}`,
-			components: [row],
+			components: [row]
 		});
 
 		if (!countdownMessage) return;
@@ -85,15 +107,16 @@ export default class extends Command {
 
 			await countdownMessage.edit({
 				content: `📢 Students: Click the button below to mark yourself present!\n⏳ Time remaining: ${formatDuration(remainingSeconds)}`,
-				components: [row],
+				components: [row]
 			});
 		}, 1000);
 
 		setTimeout(async () => {
-			const session = activeAttendanceSessions.get(interaction.channelId);
+			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
+				{ _id: entryId }
+			);
 			if (!session) return;
 
-			activeAttendanceSessions.delete(interaction.channelId);
 			clearInterval(interval);
 
 			const disabledButton = ButtonBuilder.from(hereButton).setDisabled(true);
@@ -101,30 +124,33 @@ export default class extends Command {
 
 			await countdownMessage.edit({
 				content: '⏰ Attendance session has ended.',
-				components: [disabledRow],
+				components: [disabledRow]
 			});
 
 			// Log attendees
-			const attendeeList =
-				session.attendees.length > 0
+			const attendeeList
+				= session.attendees.length > 0
 					? session.attendees
-							.map((a) => `- ${a.user.tag} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
-							.join('\n')
+						.map((a) => `- ${a.user.username} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
+						.join('\n')
 					: 'No one marked themselves present.';
 
 			const channel = interaction.channel as TextChannel;
 			await channel.send(`📝 Attendance has ended. Here are the students who marked themselves present:\n${attendeeList}`);
 		}, duration * 1000);
 	}
+
 }
 
-function setupAttendanceHandler(client: Client) {
+function setupAttendanceHandler(client: Client, entryId: ObjectId) {
 	if (initialized) return;
 	initialized = true;
 
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (interaction.isButton() && interaction.customId === 'here_button') {
-			const session = activeAttendanceSessions.get(interaction.channelId);
+			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
+				{ _id: entryId }
+			);
 			if (!session || Date.now() > session.expiresAt) {
 				await interaction.reply({ content: '⏰ Attendance session has ended.', ephemeral: true });
 				return;
@@ -132,7 +158,7 @@ function setupAttendanceHandler(client: Client) {
 
 			const modal = new ModalBuilder()
 				.setCustomId('attendence_checkin_modal')
-				.setTitle('Mark Yourself Presen');
+				.setTitle('Mark Yourself Present');
 
 			const codeInput = new TextInputBuilder()
 				.setCustomId('checkin_code')
@@ -148,14 +174,16 @@ function setupAttendanceHandler(client: Client) {
 		}
 
 		if (interaction.isModalSubmit() && interaction.customId === 'attendence_checkin_modal') {
-			await handleStudentCheckIn(interaction);
+			await handleStudentCheckIn(interaction, entryId);
 		}
 	});
 }
 
-async function handleStudentCheckIn(interaction: ModalSubmitInteraction) {
+async function handleStudentCheckIn(interaction: ModalSubmitInteraction, entryId: ObjectId) {
 	const submittedCode = interaction.fields.getTextInputValue('checkin_code');
-	const session = activeAttendanceSessions.get(interaction.channelId);
+	const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
+		{ _id: entryId }
+	);
 
 	await interaction.deferReply({ ephemeral: true });
 
@@ -178,17 +206,27 @@ async function handleStudentCheckIn(interaction: ModalSubmitInteraction) {
 		return;
 	}
 
-	attendees.push({ user: interaction.user, timestamp: Date.now() });
+	attendees.push({
+		user: {
+			id: interaction.user.id,
+			username: interaction.user.username
+		}, timestamp: Date.now()
+	});
+	await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).updateOne(
+		{ _id: entryId },
+		{ $set: { attendees } }
+	);
 
 	await interaction.editReply({ content: '✅ You have been marked present!' });
 
-	await professor.send(
+	const professorUser = await interaction.client.users.fetch(professor.id);
+	await professorUser.send(
 		`📋 **${interaction.user.tag}** marked present in <#${interaction.channelId}> at ${new Date().toLocaleTimeString()}.`
 	);
 }
 
 function generateCode(): string {
-	return Math.floor(10000 + Math.random() * 90000).toString();
+	return Math.floor(10000 + (Math.random() * 90000)).toString();
 }
 
 function formatDuration(seconds: number): string {
