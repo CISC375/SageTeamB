@@ -32,67 +32,93 @@ async function getInstructorOfficeHours(courseId: string, token: string): Promis
 		// Track if all methods failed with 403 errors
 		let allMethodsFailedWith403 = true;
 		let hasAnySuccess = false;
+		let had403Error = false;
+		let collectedOfficeHours: any[] = [];
 		
 		// 1. Try to get from instructor profiles
-		const profileOfficeHours = await getOfficeHoursFromProfiles(courseId, token);
-		if (profileOfficeHours.length > 0) {
-			hasAnySuccess = true;
-		}
-		
-		// 2. Try to get from syllabus page
-		const syllabusOfficeHours = await getOfficeHoursFromSyllabus(courseId, token);
-		if (syllabusOfficeHours.length > 0) {
-			hasAnySuccess = true;
-		}
-		
-		// 3. Try to get from syllabus files
-		const syllabusFileOfficeHours = await getOfficeHoursFromSyllabusFiles(courseId, token);
-		if (syllabusFileOfficeHours.length > 0) {
-			hasAnySuccess = true;
-		}
-		
-		// 4. Try to get from course settings/description
-		const courseOfficeHours = await getOfficeHoursFromCourse(courseId, token);
-		if (courseOfficeHours.length > 0) {
-			hasAnySuccess = true;
-		}
-		
-		// Combine all results
-		const officeHoursData = [
-			...profileOfficeHours,
-			...syllabusOfficeHours,
-			...syllabusFileOfficeHours,
-			...courseOfficeHours
-		];
-		
-		// Remove duplicates based on instructor name
-		const uniqueOfficeHours = [];
-		const seenInstructors = new Set();
-		
-		for (const data of officeHoursData) {
-			if (!seenInstructors.has(data.instructor)) {
-				seenInstructors.add(data.instructor);
-				uniqueOfficeHours.push(data);
+		try {
+			const profileOfficeHours = await getOfficeHoursFromProfiles(courseId, token);
+			if (profileOfficeHours.length > 0) {
+				hasAnySuccess = true;
+				allMethodsFailedWith403 = false;
+				collectedOfficeHours.push(...profileOfficeHours);
+			}
+		} catch (error) {
+			if (error.response?.status === 403) {
+				had403Error = true;
+			} else {
+				allMethodsFailedWith403 = false;
 			}
 		}
 		
-		// If we have any results, return them
-		if (uniqueOfficeHours.length > 0) {
-			return uniqueOfficeHours;
+		// 2. Try to get from syllabus page
+		try {
+			const syllabusOfficeHours = await getOfficeHoursFromSyllabus(courseId, token);
+			if (syllabusOfficeHours.length > 0) {
+				hasAnySuccess = true;
+				allMethodsFailedWith403 = false;
+				collectedOfficeHours.push(...syllabusOfficeHours);
+			}
+		} catch (error) {
+			if (error.response?.status === 403) {
+				had403Error = true;
+			} else {
+				allMethodsFailedWith403 = false;
+			}
 		}
 		
-		// If we have no results but had some success (not all 403), return empty array
+		// 3. Try to get from syllabus files
+		try {
+			const syllabusFileOfficeHours = await getOfficeHoursFromSyllabusFiles(courseId, token);
+			if (syllabusFileOfficeHours.length > 0) {
+				hasAnySuccess = true;
+				allMethodsFailedWith403 = false;
+				collectedOfficeHours.push(...syllabusFileOfficeHours);
+			}
+		} catch (error) {
+			if (error.response?.status === 403) {
+				had403Error = true;
+			} else {
+				allMethodsFailedWith403 = false;
+			}
+		}
+		
+		// 4. Try to get from course settings/description
+		try {
+			const courseOfficeHours = await getOfficeHoursFromCourse(courseId, token);
+			if (courseOfficeHours.length > 0) {
+				hasAnySuccess = true;
+				allMethodsFailedWith403 = false;
+				collectedOfficeHours.push(...courseOfficeHours);
+			}
+		} catch (error) {
+			if (error.response?.status === 403) {
+				had403Error = true;
+			} else {
+				allMethodsFailedWith403 = false;
+			}
+		}
+		
+		// If we have any office hours, return them
+		if (collectedOfficeHours.length > 0) {
+			return collectedOfficeHours;
+		}
+		
+		// If we had any success but no office hours found
 		if (hasAnySuccess) {
 			return [];
 		}
 		
-		// If we got here, all methods likely failed with 403 errors
-		// Return a special object to indicate permission issues
-		return [{
-			instructor: "PERMISSION_ERROR",
-			officeHours: "Your instructor has not given permission for this command to access their office hours. Please check Canvas directly.",
-			courseUrl: `https://udel.instructure.com/courses/${courseId}`
-		}];
+		// If we only got 403 errors and no other types of errors
+		if (had403Error && allMethodsFailedWith403) {
+			return [{
+				instructor: "PERMISSION_ERROR",
+				officeHours: "Your instructor has not given permission for this command to access their office hours. Please check Canvas directly.",
+				courseUrl: `https://udel.instructure.com/courses/${courseId}`
+			}];
+		}
+		
+		return [];
 	} catch (error) {
 		console.error('Error fetching office hours from multiple sources:', error.message);
 		return [];
@@ -141,29 +167,180 @@ async function getOfficeHoursFromProfiles(courseId: string, token: string): Prom
 
 async function getOfficeHoursFromSyllabus(courseId: string, token: string): Promise<any[]> {
 	try {
-		// First, try to get the syllabus page directly
+		// 1. First try to get all modules
 		try {
-			const response = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/front_page`, {
+			const modulesResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/modules`, {
 				headers: { Authorization: `Bearer ${token}` }
 			});
 			
-			const syllabusContent = response.data.body;
+			const modules = modulesResponse.data;
 			
-			// Process the syllabus content
-			const officeHours = processSyllabusContent(syllabusContent);
+			// Look for syllabus in modules
+			for (const module of modules) {
+				try {
+					// Get module items
+					const moduleItemsResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/modules/${module.id}/items`, {
+						headers: { Authorization: `Bearer ${token}` }
+					});
+					
+					const moduleItems = moduleItemsResponse.data;
+					
+					// Look for syllabus items
+					const syllabusItems = moduleItems.filter(item => 
+						item.title.toLowerCase().includes('syllabus')
+					);
+					
+					// Process each syllabus item
+					for (const item of syllabusItems) {
+						try {
+							let pageContent;
+							
+							// Handle different item types
+							if (item.type === 'Page') {
+								// Try both with and without module_item_id
+								const urls = [
+									`${CANVAS.BASE_URL}/courses/${courseId}/pages/${item.page_url}?module_item_id=${item.id}`,
+									`${CANVAS.BASE_URL}/courses/${courseId}/pages/${item.page_url}`
+								];
+
+								for (const url of urls) {
+									try {
+										const pageResponse = await axios.get(url, {
+											headers: { Authorization: `Bearer ${token}` }
+										});
+										
+										if (pageResponse.data && pageResponse.data.body) {
+											pageContent = pageResponse.data.body;
+											break;
+										}
+									} catch (error) {
+										console.warn(`Failed to fetch syllabus from ${url}:`, error.message);
+									}
+								}
+							} else if (item.type === 'ExternalUrl') {
+								// If it's an external URL that points to a Canvas page
+								if (item.external_url?.includes('/courses/') && item.external_url?.includes('/pages/')) {
+									const url = new URL(item.external_url);
+									// Keep the module_item_id if present
+									const pageResponse = await axios.get(`${CANVAS.BASE_URL}${url.pathname}${url.search}`, {
+										headers: { Authorization: `Bearer ${token}` }
+									});
+									pageContent = pageResponse.data.body;
+								}
+							}
+							
+							if (pageContent) {
+								const officeHours = processSyllabusContent(pageContent);
+								if (officeHours.length > 0) {
+									return officeHours;
+								}
+							}
+						} catch (error) {
+							console.warn(`Error fetching module syllabus item ${item.title}:`, error.message);
+						}
+					}
+				} catch (error) {
+					console.warn(`Error fetching items for module ${module.name}:`, error.message);
+				}
+			}
+		} catch (error) {
+			console.warn('Error fetching modules:', error.message);
+		}
+
+		// 2. Try the direct syllabus page URL with module_item_id
+		try {
+			// Try both with and without module_item_id
+			const urls = [
+				`${CANVAS.BASE_URL}/courses/${courseId}/pages/syllabus?module_item_id=32935218`,
+				`${CANVAS.BASE_URL}/courses/${courseId}/pages/syllabus`
+			];
+
+			for (const url of urls) {
+				try {
+					const syllabusResponse = await axios.get(url, {
+						headers: { Authorization: `Bearer ${token}` }
+					});
+					
+					if (syllabusResponse.data && syllabusResponse.data.body) {
+						const syllabusContent = syllabusResponse.data.body;
+						const officeHours = processSyllabusContent(syllabusContent);
+						if (officeHours.length > 0) {
+							return officeHours;
+						}
+					}
+				} catch (error) {
+					console.warn(`Failed to fetch syllabus from ${url}:`, error.message);
+				}
+			}
+		} catch (error) {
+			console.warn('Error fetching direct syllabus page:', error.message);
+		}
+
+		// 3. Try the course's syllabus tab
+		try {
+			const syllabusResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/syllabus`, {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			
+			if (syllabusResponse.data) {
+				const syllabusContent = syllabusResponse.data;
+				const officeHours = processSyllabusContent(syllabusContent);
+				if (officeHours.length > 0) {
+					return officeHours;
+				}
+			}
+		} catch (error) {
+			if (error.response?.status !== 404) {
+				throw error; // Re-throw if it's not a 404
+			}
+			console.warn('Error fetching course syllabus tab:', error.message);
+		}
+
+		// 4. Try to get the front page
+		try {
+			const frontPageResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/front_page`, {
+				headers: { Authorization: `Bearer ${token}` }
+			});
+			
+			const frontPageContent = frontPageResponse.data.body;
+			
+			// Process the front page content
+			const officeHours = processSyllabusContent(frontPageContent);
 			if (officeHours.length > 0) {
 				return officeHours;
+			}
+
+			// Look for syllabus links in the front page
+			const syllabusLinks = frontPageContent.match(/\/courses\/\d+\/pages\/syllabus/g);
+			if (syllabusLinks) {
+				for (const link of syllabusLinks) {
+					try {
+						const linkedSyllabusResponse = await axios.get(`${CANVAS.BASE_URL}${link}`, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+						
+						if (linkedSyllabusResponse.data && linkedSyllabusResponse.data.body) {
+							const linkedSyllabusContent = linkedSyllabusResponse.data.body;
+							const linkedOfficeHours = processSyllabusContent(linkedSyllabusContent);
+							if (linkedOfficeHours.length > 0) {
+								return linkedOfficeHours;
+							}
+						}
+					} catch (error) {
+						console.warn(`Error fetching linked syllabus page ${link}:`, error.message);
+					}
+				}
 			}
 		} catch (error) {
 			// If we get a 404, the syllabus might be in a module
 			if (error.response && error.response.status === 404) {
-				console.log(`No direct syllabus page found for course ${courseId}, checking modules...`);
+				console.log(`No front page found for course ${courseId}, checking modules...`);
 			} else {
-				console.warn('Error fetching syllabus page:', error.message);
+				console.warn('Error fetching front page:', error.message);
 			}
 		}
 		
-		// If direct syllabus page didn't work, try to find syllabus in modules
+		// 5. If direct pages didn't work, try to find syllabus in modules
 		try {
 			// Get all modules in the course
 			const modulesResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/modules`, {
@@ -204,6 +381,28 @@ async function getOfficeHoursFromSyllabus(courseId: string, token: string): Prom
 						if (officeHours.length > 0) {
 							return officeHours;
 						}
+
+						// Also check for any syllabus links in this page
+						const syllabusLinks = pageContent.match(/\/courses\/\d+\/pages\/syllabus/g);
+						if (syllabusLinks) {
+							for (const link of syllabusLinks) {
+								try {
+									const linkedSyllabusResponse = await axios.get(`${CANVAS.BASE_URL}${link}`, {
+										headers: { Authorization: `Bearer ${token}` }
+									});
+									
+									if (linkedSyllabusResponse.data && linkedSyllabusResponse.data.body) {
+										const linkedSyllabusContent = linkedSyllabusResponse.data.body;
+										const linkedOfficeHours = processSyllabusContent(linkedSyllabusContent);
+										if (linkedOfficeHours.length > 0) {
+											return linkedOfficeHours;
+										}
+									}
+								} catch (error) {
+									console.warn(`Error fetching linked syllabus page ${link}:`, error.message);
+								}
+							}
+						}
 					} catch (error) {
 						console.warn(`Error fetching module syllabus page ${item.title}:`, error.message);
 					}
@@ -230,55 +429,76 @@ function processSyllabusContent(content: string): any[] {
 			.replace(/\n\s*\n/g, '\n') // Remove multiple blank lines
 			.trim();
 
-		// Split content into sections by double newlines
-		const sections = cleanContent.split(/\n\s*\n/);
 		const staffMembers = [];
+		const lines = cleanContent.split('\n').map(line => line.trim()).filter(line => line);
+		
+		let currentStaff: any = null;
+		let collectingOfficeHours = false;
+		let officeHoursLines: string[] = [];
 
-		for (const section of sections) {
-			// Skip empty sections
-			if (!section.trim()) continue;
+		for (const line of lines) {
+			// Look for Course Staff header
+			if (line.match(/Course Staff/i)) {
+				continue;
+			}
 
-			// Look for instructor information
-			const instructorMatch = section.match(/(?:•|\*|\-)\s*([^(\n]+)(?:\s*\(([^)]+)\))?/);
-			if (instructorMatch) {
-				const name = instructorMatch[1].trim();
-				const role = instructorMatch[2]?.trim() || '';
-
-				// Extract office hours lines
-				const lines = section.split('\n');
-				const officeHoursLines = [];
-				let location = '';
-				let email = '';
-
-				for (const line of lines) {
-					const trimmedLine = line.trim();
-					
-					// Skip empty lines or the instructor name line
-					if (!trimmedLine || trimmedLine.startsWith('•') || trimmedLine.startsWith('*') || trimmedLine.startsWith('-')) continue;
-
-					// Look for office hours
-					if (trimmedLine.match(/(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday):/i)) {
-						officeHoursLines.push(trimmedLine);
-					}
-					// Look for location
-					else if (trimmedLine.match(/(?:in|at|room)\s+/i)) {
-						location = trimmedLine.replace(/(?:in|at|room)\s+/i, '').trim();
-					}
-					// Look for email
-					else if (trimmedLine.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)) {
-						email = trimmedLine.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)[0];
-					}
+			// Match staff member line (name and role in parentheses)
+			const staffMatch = line.match(/([^(]+)\s*\(([^)]+)\)/);
+			if (staffMatch) {
+				// If we were collecting info for a previous staff member, save it
+				if (currentStaff?.instructor && officeHoursLines.length > 0) {
+					currentStaff.officeHours = officeHoursLines.join('\n');
+					staffMembers.push({ ...currentStaff });
 				}
+				
+				// Start new staff member
+				currentStaff = {
+					instructor: `${staffMatch[1].trim()} (${staffMatch[2].trim()})`,
+					officeHours: '',
+					location: '',
+					email: ''
+				};
+				collectingOfficeHours = false;
+				officeHoursLines = [];
+				continue;
+			}
 
-				if (officeHoursLines.length > 0) {
-					staffMembers.push({
-						instructor: `${name}${role ? ` (${role})` : ''}`,
-						officeHours: officeHoursLines.join('\n'),
-						location: location,
-						email: email
-					});
+			if (!currentStaff) continue;
+
+			// Check for office hours header
+			if (line.match(/Office Hours:?$/i)) {
+				collectingOfficeHours = true;
+				continue;
+			}
+
+			// Match email line
+			const emailMatch = line.match(/Email:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+			if (emailMatch) {
+				currentStaff.email = emailMatch[1];
+				continue;
+			}
+
+			// Match office hours lines
+			if (collectingOfficeHours) {
+				// Match various time formats
+				const dayTimeMatch = line.match(/([A-Za-z]+):\s*([\d:]+(?:am|pm)?)\s*(?:-|to)\s*([\d:]+(?:am|pm)?)\s*(?:in\s+(.+))?/i);
+				if (dayTimeMatch) {
+					const [_, day, startTime, endTime, location] = dayTimeMatch;
+					const officeHoursLine = location ? 
+						`${day}: ${startTime}-${endTime} in ${location}` :
+						`${day}: ${startTime}-${endTime}`;
+					officeHoursLines.push(officeHoursLine);
+					if (location && !currentStaff.location) {
+						currentStaff.location = location;
+					}
 				}
 			}
+		}
+
+		// Don't forget to add the last staff member
+		if (currentStaff?.instructor && officeHoursLines.length > 0) {
+			currentStaff.officeHours = officeHoursLines.join('\n');
+			staffMembers.push(currentStaff);
 		}
 
 		return staffMembers;
@@ -527,120 +747,89 @@ function parseOfficeHours(officeHoursText: string): { day: string; startTime: Da
 	const lines = officeHoursText.split('\n').map(line => line.trim()).filter(line => line);
 	
 	for (const line of lines) {
-		// Match day and time patterns
-		const dayMatch = line.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)s?:?\s*/i);
-		if (!dayMatch) continue;
+		// Match day and time patterns with optional location
+		const dayTimeMatch = line.match(/^\s*([A-Za-z]+):\s*([\d:]+(?:am|pm)?)\s*(?:-|to)\s*([\d:]+(?:am|pm)?)\s*(?:in\s+(.+))?/i);
+		if (!dayTimeMatch) continue;
 
-		const day = dayMatch[1];
-		const timeText = line.slice(dayMatch[0].length);
-
-		// Match time patterns (handle various formats)
-		const timePatterns = [
-			// Pattern 1: 11:30am - 12:30pm
-			/(\d{1,2}(?::\d{2})?)\s*(?:am|pm)?\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?)\s*(?:am|pm)/i,
-			// Pattern 2: 11:30-12:30pm
-			/(\d{1,2}(?::\d{2})?)\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?)\s*(?:am|pm)/i,
-			// Pattern 3: 11:30 - 12:30
-			/(\d{1,2}(?::\d{2})?)\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?)/i
-		];
-
-		for (const pattern of timePatterns) {
-			const timeMatch = timeText.match(pattern);
-			if (timeMatch) {
-				let [_, startStr, endStr] = timeMatch;
-				
-				// Parse start and end times
-				const startParts = startStr.split(':').map(Number);
-				const endParts = endStr.split(':').map(Number);
-				
-				let startHour = startParts[0];
-				let startMinute = startParts[1] || 0;
-				let endHour = endParts[0];
-				let endMinute = endParts[1] || 0;
-
-				// Check if PM is explicitly mentioned
-				const isPM = timeText.toLowerCase().includes('pm');
-				const isAM = timeText.toLowerCase().includes('am');
-
-				// Function to determine if a time is likely PM
-				const isLikelyPM = (hour: number) => {
-					// Times between 1:00 and 8:00 are likely PM for office hours
-					// 9:00-11:00 could be AM, 12:00 is handled specially
-					return (hour >= 1 && hour <= 8);
-				};
-
-				// If no AM/PM specified, make intelligent assumptions
-				if (!isPM && !isAM) {
-					// If either time is likely PM, convert both to PM
-					if (isLikelyPM(startHour) || isLikelyPM(endHour)) {
-						if (startHour !== 12 && startHour <= 8) startHour += 12;
-						if (endHour !== 12 && endHour <= 8) endHour += 12;
-					}
-					// Special case: if end time is 12 and start time is PM, keep 12 as is
-					else if (endHour === 12 && startHour > 12) {
-						// Keep endHour as 12
-					}
-					// If times are sequential and make sense (e.g., 9-11, 10-12), assume AM
-					else if (startHour >= 9 && startHour < 12 && endHour > startHour && endHour <= 12) {
-						// Keep as AM
-					}
-					// For any other ambiguous cases where end time would be before start time
-					else if (endHour <= startHour) {
-						if (endHour !== 12) endHour += 12;
-						if (startHour < endHour - 12) startHour += 12;
-					}
-				} else {
-					// Handle explicit AM/PM cases
-					if (isPM) {
-						// Convert end time to PM if it's not 12
-						if (endHour !== 12) endHour += 12;
-						// Convert start time to PM if it would make sense
-						if (startHour !== 12 && startHour < endHour - 12) startHour += 12;
-					}
-					if (isAM) {
-						// Handle 12 AM cases
-						if (startHour === 12) startHour = 0;
-						if (endHour === 12) endHour = 0;
-					}
-				}
-
-				// Create Date objects for start and end times
-				const today = new Date();
-				const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-					.findIndex(d => d.toLowerCase() === day.toLowerCase());
-				
-				if (dayIndex !== -1) {
-					// Get the current day of the week
-					const currentDayIndex = today.getDay();
-					
-					// Calculate the difference in days to get to the target day
-					const daysToAdd = (dayIndex - currentDayIndex + 7) % 7;
-					
-					// Create new date objects for this specific day
-					const startTime = new Date(today);
-					startTime.setDate(today.getDate() + daysToAdd);
-					startTime.setHours(startHour, startMinute, 0, 0);
-					
-					const endTime = new Date(today);
-					endTime.setDate(today.getDate() + daysToAdd);
-					endTime.setHours(endHour, endMinute, 0, 0);
-
-					// Extract location if present
-					const locationMatch = line.match(/(?:in|at|room)\s+([^,]+)/i);
-					const location = locationMatch ? locationMatch[1].trim() : undefined;
-
-					events.push({
-						day,
-						startTime,
-						endTime,
-						location
-					});
-				}
-				break;
+		const [_, day, startTimeStr, endTimeStr, location] = dayTimeMatch;
+		
+		// Helper function to parse time with AM/PM context
+		const parseTimeWithContext = (timeStr: string, otherTimeStr: string, isEndTime: boolean = false) => {
+			let time = timeStr.toLowerCase();
+			const otherTime = otherTimeStr.toLowerCase();
+			
+			// Extract hours and minutes
+			const [hoursStr, minutesStr] = time.replace(/[ap]m/, '').split(':').map(Number);
+			let hours = hoursStr;
+			const minutes = minutesStr || 0;
+			
+			// If time has explicit AM/PM, use it
+			if (time.includes('pm') && hours < 12) {
+				hours += 12;
+			} else if (time.includes('am') && hours === 12) {
+				hours = 0;
 			}
+			// If time doesn't have AM/PM
+			else if (!time.includes('am') && !time.includes('pm')) {
+				const otherHours = parseInt(otherTime.replace(/[ap]m/, '').split(':')[0]);
+				const otherIsPM = otherTime.includes('pm');
+				
+				// Special case: if this is the start time (not isEndTime), the other time has PM,
+				// and this time is between 8 and 12, assume this is AM
+				if (!isEndTime && otherIsPM && hours >= 8 && hours <= 12) {
+					// Keep as AM (no conversion needed)
+					if (hours === 12) hours = 0;
+				}
+				// Case 1: Hours that are almost always PM for office hours
+				else if (hours >= 1 && hours <= 7) {
+					hours += 12; // Convert to PM (e.g., 3:50 -> 15:50)
+				}
+				// Case 2: Special handling for 12 o'clock
+				else if (hours === 12) {
+					if (otherIsPM || (isEndTime && otherHours < 12)) {
+						hours = 12; // Keep as noon
+					} else {
+						hours = 0; // Convert to midnight
+					}
+				}
+				// Case 3: Handle other times (8-11)
+				else if (hours >= 8 && hours <= 11) {
+					if (otherIsPM && isEndTime) {
+						hours += 12; // Convert to PM if this is the end time and other time is PM
+					}
+					// Otherwise keep as AM
+				}
+			}
+			
+			return [hours, minutes];
+		};
+		
+		// Parse start and end times
+		const [startHours, startMinutes] = parseTimeWithContext(startTimeStr, endTimeStr);
+		const [endHours, endMinutes] = parseTimeWithContext(endTimeStr, startTimeStr, true);
+		
+		// Create Date objects for start and end times
+		const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+			.findIndex(d => d.toLowerCase() === day.toLowerCase());
+		
+		if (dayIndex !== -1) {
+			// Create a date object for the target day within the week
+			const startTime = new Date();
+			startTime.setHours(startHours, startMinutes, 0, 0);
+			
+			const endTime = new Date();
+			endTime.setHours(endHours, endMinutes, 0, 0);
+			
+			// Add this event to the array
+			events.push({
+				day,
+				startTime,
+				endTime,
+				location
+			});
 		}
 	}
-
+	
 	return events;
 }
 
@@ -957,18 +1146,31 @@ export async function handleCalendarButtonClick(interaction: ButtonInteraction) 
 	let eventsCreated = false;
 
 	for (const instructor of officeHours) {
-		// Parse the office hours string to get actual times for the target week
+		// Parse the office hours string to get actual times
 		const parsedSlots = parseOfficeHours(instructor.officeHours);
 		
 		if (parsedSlots.length > 0) {
-			// Use the parsed slots to create events
+			// For each slot, create events for this week
 			for (const slot of parsedSlots) {
-				// Only add events that fall within the target week
-				if (slot.startTime >= weekStart && slot.startTime <= weekEnd) {
+				const dayIndex = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+					.findIndex(d => d.toLowerCase() === slot.day.toLowerCase());
+				
+				if (dayIndex !== -1) {
+					// Calculate the date for this slot in the target week
+					const eventDate = new Date(weekStart);
+					eventDate.setDate(weekStart.getDate() + dayIndex);
+					
+					// Create start and end times for this specific date
+					const startTime = new Date(eventDate);
+					startTime.setHours(slot.startTime.getHours(), slot.startTime.getMinutes(), 0, 0);
+					
+					const endTime = new Date(eventDate);
+					endTime.setHours(slot.endTime.getHours(), slot.endTime.getMinutes(), 0, 0);
+					
 					eventsCreated = true;
 					calendar.createEvent({
-						start: slot.startTime,
-						end: slot.endTime,
+						start: startTime,
+						end: endTime,
 						summary: `Office Hours: ${instructor.instructor}`,
 						description: `${instructor.officeHours}${instructor.email ? `\n\nEmail: ${instructor.email}` : ''}`,
 						location: slot.location || instructor.location || 'Check bio or Canvas',
