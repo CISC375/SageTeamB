@@ -190,9 +190,6 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 
 			progressText = `📊 Weekly Progress: **${completedCount} / ${totalCount} assignments completed**\n${progressBar}`;
 		}
-		// const progressText = thisWeekAssignments.length > 0
-		// 	? `📊 Weekly Progress: **${completed.length} / ${thisWeekAssignments.length} assignments completed**`
-		// 	: '📊 No assignments due this week.';
 
 		const courseDetails = await axios.get<CanvasCourse>(
 			`https://udel.instructure.com/api/v1/courses/${courseId}`,
