@@ -11,5 +11,6 @@ export interface SageUser {
 	isVerified: boolean;
 	isStaff: boolean;
 	roles: Array<string>;
-	courses: Array<string>
+	courses: Array<string>;
+	canvasToken?: string;
 }
