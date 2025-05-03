@@ -19,6 +19,8 @@ import { format, isSameDay } from 'date-fns';
 import ical from 'ical-generator';
 import { CANVAS } from '../../../config';
 import { Command } from '@lib/types/Command';
+import { SageUser } from '@lib/types/SageUser';
+import { DB } from '@root/config';
 
 async function getCourseFiles(courseId: string, token: string) {
 	const response = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/files`, {
@@ -884,7 +886,6 @@ function parseTimeSimple(timeStr: string): [number, number] {
 }
 
 export default class extends Command {
-
 	description = 'Retrieve notes, recordings, and homework related to a missed lecture date';
 	runInDM?: true;
 	runInGuild?: boolean = true;
@@ -899,7 +900,20 @@ export default class extends Command {
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
+		// Get the user's database entry
+		const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+		if (!user) {
+			await interaction.reply({ content: 'You are not registered in the database. Please verify your account first.', ephemeral: true });
+			return;
+		}
+
+		if (!user.canvasToken) {
+			await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.', ephemeral: true });
+			return;
+		}
+
+		const canvasToken = user.canvasToken;
 		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active`;
 		const missedDateString = interaction.options.getString('date', true);
 
@@ -957,7 +971,16 @@ export function setupMissingLectureHandler(client: Client) {
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (interaction.isStringSelectMenu() && interaction.customId === 'missinglecture_select') {
 			const [courseId, dateStr] = interaction.values[0].split('::');
-			const canvasToken = CANVAS.TOKEN;
+
+			// Get the user's database entry
+			const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+			if (!user || !user.canvasToken) {
+				await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.', ephemeral: true });
+				return;
+			}
+
+			const canvasToken = user.canvasToken;
 
 			const lectureDate = new Date(dateStr);
 			const weekStart = new Date(lectureDate);
@@ -1091,7 +1114,16 @@ export function setupMissingLectureHandler(client: Client) {
 
 export async function handleCalendarButtonClick(interaction: ButtonInteraction) {
 	const [, courseId, dateStr] = interaction.customId.split('_');
-	const token = CANVAS.TOKEN;
+
+	// Get the user's database entry
+	const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+	if (!user || !user.canvasToken) {
+		await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.', ephemeral: true });
+		return;
+	}
+
+	const token = user.canvasToken;
 
 	try {
 		await interaction.deferReply();
@@ -1198,20 +1230,6 @@ export async function handleCalendarButtonClick(interaction: ButtonInteraction) 
 	
 	// Create a file attachment
 	const attachment = new AttachmentBuilder(buffer, { name: `office_hours_${dateStr}.ics` });
-	
-	try {
-		await interaction.editReply({
-			content: `🗓️ Here's your office hours calendar for the week of ${dateStr}. Click the file below to download it.`,
-			files: [attachment]
-		});
-	} catch (error) {
-		console.error('Failed to send calendar file:', error);
-		try {
-			await interaction.editReply({
-				content: `🗓️ Here's your office hours calendar for the week of ${dateStr}. You can copy this data and save it as a .ics file:\n\`\`\`\n${calendarData}\n\`\`\``
-			});
-		} catch (e) {
-			console.error('Failed to send fallback calendar data:', e);
-		}
-	}
+
+	await interaction.editReply({ content: 'Here are the office hours for this week:', files: [attachment] });
 }
