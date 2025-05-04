@@ -20,6 +20,7 @@ import { ADMIN_PERMS, STAFF_PERMS } from '@root/src/lib/permissions';
 import { DB } from '@root/config';
 import { ObjectId } from 'mongodb';
 import { format } from 'date-fns';
+import { SageUser } from '@lib/types/SageUser';
 
 type AttendanceRecord = {
 	code: string;
@@ -67,6 +68,19 @@ export default class extends Command {
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
+		// Get the user's database entry
+		const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+		if (!user) {
+			await interaction.reply({ content: 'You are not registered in the database. Please verify your account first.' });
+			return;
+		}
+
+		if (!user.canvasToken) {
+			await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.' });
+			return;
+		}
+
 		const startDateStr = interaction.options.getString('start_date');
 		const endDateStr = interaction.options.getString('end_date');
 		const classCode = interaction.options.getString('class_code');

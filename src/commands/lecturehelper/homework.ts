@@ -12,14 +12,13 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 import { CANVAS } from '../../../config';
-
+import { DB } from '@root/config';
+import { SageUser } from '@lib/types/SageUser';
 
 interface CanvasCourse {
 	id: number;
 	name: string;
 }
-
-// interfaces to avoid the any type
 
 interface CanvasAssignment {
 	id: number;
@@ -37,7 +36,6 @@ interface CanvasSubmission {
 	workflow_state: string;
 }
 
-// prevents reregistering handler
 let handlerRegistered = false;
 
 function generateProgressBar(completed: number, total: number, length = 10): string {
@@ -51,38 +49,50 @@ function generateProgressBar(completed: number, total: number, length = 10): str
 export default class extends Command {
 	description = 'Fetch upcoming assignments from a Canvas course';
 	runInDM = true;
-	options: ApplicationCommandOptionData[] = [
-	];
+	options: ApplicationCommandOptionData[] = [];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = CANVAS.BASE_URL;
+		const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+		if (!user) {
+			await interaction.reply({ content: 'You are not registered in the database. Please verify your account first.' });
+			return;
+		}
+
+		if (!user.canvasToken) {
+			await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.' });
+			return;
+		}
+
+		const canvasToken = user.canvasToken;
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active`;
 
 		try {
-			// const searchTerm = interaction.options.getString('search_term') ?? '';
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ /* ephemeral: true */});
 
 			const response = await axios.get<CanvasCourse[]>(baseUrl, {
 				headers: { Authorization: `Bearer ${canvasToken}` }
 			});
 			const allCourses = response.data;
 
-			const validCourses: CanvasCourse[] = [];
+			// Map courses to an array of promises, preserving original order
+			const coursePromises = allCourses.map(async (course: CanvasCourse) => {
+				try {
+					await axios.get(
+						`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`,
+						{ headers: { Authorization: `Bearer ${canvasToken}` } }
+					);
+					return { id: course.id, name: course.name };
+				} catch (error) {
+					if (axios.isAxiosError(error) && error.response?.status !== 403) {
+						console.error(`Error checking course ${course.id}:`, error.message);
+					}
+					return null;
+				}
+			});
 
-			await Promise.all(
-				allCourses.map((course: CanvasCourse) =>
-					axios
-						.get(`https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`, {
-							headers: { Authorization: `Bearer ${canvasToken}` }
-						})
-						.then(() => validCourses.push({ id: course.id, name: course.name }))
-						.catch((error) => {
-							if (axios.isAxiosError(error) && error.response?.status !== 403) {
-								console.error(`Error checking course ${course.id}:`, error.message);
-							}
-						})
-				)
-			);
+			// Resolve promises and filter out null results, preserving order
+			const validCourses = (await Promise.all(coursePromises)).filter((course): course is CanvasCourse => course !== null);
 
 			if (validCourses.length === 0) {
 				await interaction.editReply({ content: 'No active courses found.' });
@@ -102,7 +112,6 @@ export default class extends Command {
 			const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 			await interaction.editReply({ content: 'Select a course:', components: [row] });
 
-			// Set up handler using the dropdown
 			if (!handlerRegistered) {
 				setupHomeworkDropdownHandler(interaction.client);
 				handlerRegistered = true;
@@ -119,12 +128,18 @@ export default class extends Command {
 	}
 }
 
-
 export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
-	const canvasToken = CANVAS.TOKEN;
+	const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+	if (!user || !user.canvasToken) {
+		await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.' });
+		return;
+	}
+
+	const canvasToken = user.canvasToken;
 
 	try {
-		await interaction.deferReply({ ephemeral: true });
+		await interaction.deferReply({ /* ephemeral: true */ });
 
 		const courseId = interaction.values[0];
 		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
@@ -146,12 +161,11 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			return;
 		}
 
-		// weekly progress tracking
 		const weekStart = new Date(now);
-		weekStart.setDate(now.getDate() - now.getDay()); // starts on sunday
+		weekStart.setDate(now.getDate() - now.getDay());
 		weekStart.setHours(0, 0, 0, 0);
 		const weekEnd = new Date(weekStart);
-		weekEnd.setDate(weekStart.getDate() + 7); // saturday
+		weekEnd.setDate(weekStart.getDate() + 7);
 
 		const thisWeekAssignments = assignments.filter(a => {
 			if (!a.due_at) {
@@ -177,7 +191,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const completed = thisWeekAssignments.filter(assign => {
 			const submission = submissions.find(s => s.assignment_id === assign.id);
 			return submission &&
-			(submission.submitted_at !== null || submission.workflow_state === 'submitted' || submission.workflow_state === 'graded' || submission.workflow_state === 'complete');
+				(submission.submitted_at !== null || submission.workflow_state === 'submitted' || submission.workflow_state === 'graded' || submission.workflow_state === 'complete');
 		});
 
 		let progressText = '📊 No assignments due this week.';
@@ -190,9 +204,6 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 
 			progressText = `📊 Weekly Progress: **${completedCount} / ${totalCount} assignments completed**\n${progressBar}`;
 		}
-		// const progressText = thisWeekAssignments.length > 0
-		// 	? `📊 Weekly Progress: **${completed.length} / ${thisWeekAssignments.length} assignments completed**`
-		// 	: '📊 No assignments due this week.';
 
 		const courseDetails = await axios.get<CanvasCourse>(
 			`https://udel.instructure.com/api/v1/courses/${courseId}`,
@@ -220,7 +231,6 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		await interaction.editReply({ content: 'Failed to fetch assignments.' });
 	}
 }
-
 
 export function setupHomeworkDropdownHandler(client: Client): void {
 	client.on('interactionCreate', async (interaction: Interaction) => {

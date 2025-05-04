@@ -19,6 +19,8 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 import { CANVAS } from '../../../config';
+import { DB } from '@root/config';
+import { SageUser } from '@lib/types/SageUser';
 
 export default class extends Command {
 
@@ -27,6 +29,19 @@ export default class extends Command {
 	options: ApplicationCommandOptionData[] = []; // Interaction with users via a drop down & a modal
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
+		// Get the user's database entry
+		const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+		if (!user) {
+			await interaction.reply({ content: 'You are not registered in the database. Please verify your account first.' });
+			return;
+		}
+
+		if (!user.canvasToken) {
+			await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.' });
+			return;
+		}
+
 		setupInteractionHandler(interaction.client); // initialize handler first thing
 		await interaction.deferReply();
 
@@ -34,7 +49,7 @@ export default class extends Command {
 
 		try {
 			const response = await axios.get(baseUrl, {
-				headers: { Authorization: `Bearer ${CANVAS.TOKEN}` }
+				headers: { Authorization: `Bearer ${user.canvasToken}` }
 			});
 
 			const activeCourses = response.data;
@@ -112,11 +127,19 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 	const searchTerm = interaction.fields.getTextInputValue('search_term');
 	const matchThreshold = 0.5;
 
-	try{
+	// Get the user's database entry
+	const user: SageUser = await interaction.client.mongo.collection(DB.USERS).findOne({ discordId: interaction.user.id });
+
+	if (!user || !user.canvasToken) {
+		await interaction.reply({ content: 'You need to set up your Canvas access token first. Use the `/inputtoken` command to do so.' });
+		return;
+	}
+
+	try {
 		await interaction.deferReply();
 		const foldersUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/folders`;
 		const foldersResponse = await axios.get(foldersUrl, {
-			headers: { Authorization: `Bearer ${CANVAS.TOKEN}` }
+			headers: { Authorization: `Bearer ${user.canvasToken}` }
 		});
 
 		const folders = foldersResponse.data;
@@ -131,7 +154,7 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 			const filesUrl = `https://udel.instructure.com/api/v1/folders/${folder.id}/files`;
 			try {
 				const filesResponse = await axios.get(filesUrl, {
-					headers: { Authorization: `Bearer ${CANVAS.TOKEN}` }
+					headers: { Authorization: `Bearer ${user.canvasToken}` }
 				});
 
 				const files = filesResponse.data;
