@@ -31,7 +31,7 @@ async function getCourseFiles(courseId: string, token: string) {
 async function getInstructorOfficeHours(courseId: string, token: string): Promise<any[]> {
 	try {
 		// Track if all methods failed with 403 errors
-		const allMethodsFailedWith403 = true;
+		let allMethodsFailedWith403 = true;
 		let hasAnySuccess = false;
 		let had403Error = false;
 		const collectedOfficeHours: any[] = [];
