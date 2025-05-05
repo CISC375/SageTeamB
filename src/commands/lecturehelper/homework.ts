@@ -12,6 +12,7 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 import { CANVAS } from '../../../config';
+import { getUserCanvasToken } from './authenticatecanvas';
 
 
 interface CanvasCourse {
@@ -49,14 +50,19 @@ function generateProgressBar(completed: number, total: number, length = 10): str
 }
 
 export default class extends Command {
+
 	description = 'Fetch upcoming assignments from a Canvas course';
 	runInDM = true;
 	options: ApplicationCommandOptionData[] = [
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = CANVAS.BASE_URL;
+		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
+		if (!canvasToken) {
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first, call /authenticatecanvas.', ephemeral: true });
+			return;
+		}
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active;`;
 
 		try {
 			await interaction.deferReply({ ephemeral: true });
@@ -67,6 +73,7 @@ export default class extends Command {
 			const allCourses = response.data;
 
 			const validCourses: CanvasCourse[] = [];
+
 
 			await Promise.all(
 				allCourses.map((course: CanvasCourse) =>
@@ -106,7 +113,6 @@ export default class extends Command {
 				setupHomeworkDropdownHandler(interaction.client);
 				handlerRegistered = true;
 			}
-
 		} catch (error: unknown) {
 			const message = axios.isAxiosError(error)
 				? error.response?.data ?? error.message
@@ -116,11 +122,12 @@ export default class extends Command {
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
+
 }
 
 
 export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
-	const canvasToken = CANVAS.TOKEN;
+	const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 
 	try {
 		await interaction.deferReply({ ephemeral: true });
@@ -163,7 +170,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			const isQuiz = a.submission_types.includes('online_quiz');
 
 			return (
-				dueDate >= weekStart && 
+				dueDate >= weekStart &&
 				dueDate < weekEnd &&
 				(isGradable || isQuiz)
 			);
@@ -247,7 +254,6 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			
 
 		await interaction.editReply({ embeds: [embed] });
-
 	} catch (error: unknown) {
 		const message = axios.isAxiosError(error)
 			? error.response?.data ?? error.message
