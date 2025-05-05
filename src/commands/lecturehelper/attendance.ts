@@ -21,6 +21,7 @@ import { DB } from '@root/config';
 import { ObjectId } from 'mongodb';
 
 type AttendanceRecord = {
+	_id: ObjectId;
 	code: string;
 	professor: {
 		id: string;
@@ -77,10 +78,10 @@ export default class extends Command {
 		});
 		const entryId = result.insertedId;
 
-		setupAttendanceHandler(interaction.client, entryId);
+		setupAttendanceHandler(interaction.client);
 
 		await interaction.reply({
-			content: `✅ Attendance session started!\n**Code:** \`${code}\`\nDuration: ${duration} seconds.\nStudents may now mark themselves present using \`/here\` or the button.`,
+			content: `✅ Attendance session started!\n**Code:** \`${code}\`\nDuration: ${duration} seconds.\nStudents may now mark themselves present using the "here" button.`,
 			ephemeral: true
 		});
 
@@ -142,17 +143,19 @@ export default class extends Command {
 
 }
 
-function setupAttendanceHandler(client: Client, entryId: ObjectId) {
+function setupAttendanceHandler(client: Client) {
 	if (initialized) return;
 	initialized = true;
 
 	client.on('interactionCreate', async (interaction: Interaction) => {
 		if (interaction.isButton() && interaction.customId === 'here_button') {
-			const session = await interaction.client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne(
-				{ _id: entryId }
-			);
-			if (!session || Date.now() > session.expiresAt) {
-				await interaction.reply({ content: '⏰ Attendance session has ended.', ephemeral: true });
+			const session = await client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne({
+				expiresAt: { $gt: Date.now() },
+				classCode: { $exists: true }
+			});
+
+			if (!session) {
+				await interaction.reply({ content: '⏰ Attendance session has ended or does not exist.', ephemeral: true });
 				return;
 			}
 
@@ -174,7 +177,16 @@ function setupAttendanceHandler(client: Client, entryId: ObjectId) {
 		}
 
 		if (interaction.isModalSubmit() && interaction.customId === 'attendence_checkin_modal') {
-			await handleStudentCheckIn(interaction, entryId);
+			// Find latest active session
+			const session = await client.mongo.collection<AttendanceRecord>(DB.ATTENDANCE).findOne({
+				expiresAt: { $gt: Date.now() },
+				classCode: { $exists: true }
+			});
+			if (!session) {
+				await interaction.reply({ content: '❌ Session expired.', ephemeral: true });
+				return;
+			}
+			await handleStudentCheckIn(interaction, session._id);
 		}
 	});
 }
