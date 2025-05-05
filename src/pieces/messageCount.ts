@@ -110,20 +110,35 @@ async function handleLevelUp(err: Error, entry: SageUser, msg: Message): Promise
 		}
 
 		if (entry.level <= maxLevel) {
-			await msg.member.roles.remove(msg.member.roles.cache.find(r => r.name.startsWith('Level')), `${msg.author.username} leveled up.`);
-			msg.member.roles.add(addRole, `${msg.author.username} leveled up.`);
+			const oldLevelRole = msg.member.roles.cache.find(r => r.name.startsWith('Level'));
+			if (oldLevelRole) {
+				await msg.member.roles.remove(oldLevelRole, `${msg.author.username} leveled up.`);
+			}
+			if (addRole) {
+				await msg.member.roles.add(addRole, `${msg.author.username} leveled up.`);
+			}
 		}
-
-		if (entry.level > maxLevel
-			&& !(addRole = msg.guild.roles.cache.find(r => r.name === `Power User`))) {
-			addRole = await msg.guild.roles.create({
-				name: `Power User`,
-				color: maxGreen,
-				position: msg.guild.roles.cache.get(ROLES.VERIFIED).position + 1,
-				permissions: BigInt(0),
-				reason: `${msg.author.username} is the first to become a power user!`
-			});
+		
+		if (entry.level > maxLevel) {
+			if (!(addRole = msg.guild.roles.cache.find(r => r.name === 'Power User'))) {
+				addRole = await msg.guild.roles.create({
+					name: 'Power User',
+					color: maxGreen,
+					position: msg.guild.roles.cache.get(ROLES.VERIFIED).position + 1,
+					permissions: BigInt(0),
+					reason: `${msg.author.username} is the first to become a power user!`
+				});
+			}
+		
+			const oldLevelRole = msg.member.roles.cache.find(r => r.name.startsWith('Level'));
+			if (oldLevelRole) {
+				await msg.member.roles.remove(oldLevelRole, `${msg.author.username} leveled up.`);
+			}
+			if (addRole && !msg.member.roles.cache.has(addRole.id)) {
+				await msg.member.roles.add(addRole, `${msg.author.username} leveled up.`);
+			}
 		}
+		
 		if (entry.level > maxLevel && !msg.member.roles.cache.find(r => r.name === 'Power User')) {
 			msg.member.roles.remove(msg.member.roles.cache.find(r => r.name.startsWith('Level')), `${msg.author.username} leveled up.`);
 			msg.member.roles.add(addRole, `${msg.author.username} leveled up.`);
