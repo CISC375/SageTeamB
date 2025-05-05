@@ -12,13 +12,15 @@ import {
 	ApplicationCommandOptionType,
 	ApplicationCommandOptionData,
 	TextChannel,
-	ApplicationCommandPermissions
+	ApplicationCommandPermissions,
+	Role
 } from 'discord.js';
 
 import { Command } from '@lib/types/Command';
 import { ADMIN_PERMS, STAFF_PERMS } from '@root/src/lib/permissions';
 import { DB } from '@root/config';
 import { ObjectId } from 'mongodb';
+import { ROLES } from '../../../config';
 
 type AttendanceRecord = {
 	_id: ObjectId;
@@ -136,8 +138,23 @@ export default class extends Command {
 						.join('\n')
 					: 'No one marked themselves present.';
 
+			// Log absentees (Only logs members who aren't admins, bots, or already present)
+			await interaction.guild.members.fetch();
+			const excludedRoleIds = [ROLES.ADMIN, ROLES.STAFF, ROLES.STUDENT_ADMIN];
+			const attendeeIds = new Set(session.attendees.map(a => a.user.id));
+
+			const absentees = interaction.guild.members.cache.filter(member =>
+				!member.user.bot
+				&& !attendeeIds.has(member.id)
+				&& !excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
+			);
+			const absenteeList = absentees.size > 0
+				? absentees.map(m => `- ${m.user.username} (<@${m.user.id}>)`).join('\n')
+				: 'The gang\'s all here!';
+
 			const channel = interaction.channel as TextChannel;
 			await channel.send(`📝 Attendance has ended. Here are the students who marked themselves present:\n${attendeeList}`);
+			await channel.send(`Uh oh! Looks like these guys think they can skip class today:\n ${absenteeList}`);
 		}, duration * 1000);
 	}
 
