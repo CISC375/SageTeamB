@@ -12,6 +12,7 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 import { CANVAS } from '../../../config';
+import { getUserCanvasToken } from './authenticatecanvas';
 
 
 interface CanvasCourse {
@@ -49,17 +50,21 @@ function generateProgressBar(completed: number, total: number, length = 10): str
 }
 
 export default class extends Command {
+
 	description = 'Fetch upcoming assignments from a Canvas course';
 	runInDM = true;
 	options: ApplicationCommandOptionData[] = [
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = CANVAS.BASE_URL;
+		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
+		if (!canvasToken) {
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first, call /authenticatecanvas.', ephemeral: true });
+			return;
+		}
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active;`;
 
 		try {
-			// const searchTerm = interaction.options.getString('search_term') ?? '';
 			await interaction.deferReply({ ephemeral: true });
 
 			const response = await axios.get<CanvasCourse[]>(baseUrl, {
@@ -68,6 +73,7 @@ export default class extends Command {
 			const allCourses = response.data;
 
 			const validCourses: CanvasCourse[] = [];
+
 
 			await Promise.all(
 				allCourses.map((course: CanvasCourse) =>
@@ -107,7 +113,6 @@ export default class extends Command {
 				setupHomeworkDropdownHandler(interaction.client);
 				handlerRegistered = true;
 			}
-
 		} catch (error: unknown) {
 			const message = axios.isAxiosError(error)
 				? error.response?.data ?? error.message
@@ -117,11 +122,12 @@ export default class extends Command {
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
+
 }
 
 
 export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
-	const canvasToken = CANVAS.TOKEN;
+	const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 
 	try {
 		await interaction.deferReply({ ephemeral: true });
@@ -129,9 +135,10 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const courseId = interaction.values[0];
 		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
 
-		const assignmentsResponse = await axios.get<CanvasAssignment[]>(assignmentsUrl, {
-			headers: { Authorization: `Bearer ${canvasToken}` }
-		});
+		const assignmentsResponse = await axios.get<CanvasAssignment[]>(
+			`${assignmentsUrl}?per_page=100`,
+			{ headers: { Authorization: `Bearer ${canvasToken}` } }
+		);
 
 		const assignments = assignmentsResponse.data;
 		const now = new Date();
@@ -163,15 +170,17 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			const isQuiz = a.submission_types.includes('online_quiz');
 
 			return (
-				dueDate >= weekStart && 
+				dueDate >= weekStart &&
 				dueDate < weekEnd &&
 				(isGradable || isQuiz)
 			);
 		});
 
-		const submissionRes = await axios.get<CanvasSubmission[]>(`${assignmentsUrl}/?student_id=self&per_page=100`, {
-			headers: { Authorization: `Bearer ${canvasToken}` }
-		});
+		const submissionRes = await axios.get<CanvasSubmission[]>(
+			`https://udel.instructure.com/api/v1/courses/${courseId}/students/submissions?student_id=self&per_page=100`,
+			{ headers: { Authorization: `Bearer ${canvasToken}` } }
+		  );
+		  
 		const submissions = submissionRes.data;
 
 		const completed = thisWeekAssignments.filter(assign => {
@@ -190,9 +199,44 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 
 			progressText = `📊 Weekly Progress: **${completedCount} / ${totalCount} assignments completed**\n${progressBar}`;
 		}
-		// const progressText = thisWeekAssignments.length > 0
-		// 	? `📊 Weekly Progress: **${completed.length} / ${thisWeekAssignments.length} assignments completed**`
-		// 	: '📊 No assignments due this week.';
+
+		function getAssignmentType(assignment: CanvasAssignment): string{
+			if (assignment.submission_types.includes('online_quiz')) {
+				return '🧪 Quizzes';
+			}
+			if (assignment.submission_types.includes('discussion_topic')) {
+				return '💬 Discussions';
+			}
+			if (assignment.submission_types.includes('online_text_entry') || assignment.submission_types.includes('online_upload')) {
+				return '📝 Written Assignments';
+			}
+			if (assignment.submission_types.includes('online_quiz')) {
+				return '🔗 External Tools';
+			}
+			return '📦 Other';
+		}
+
+		const grouped = upcoming.reduce((acc, assignment) => {
+			const type = getAssignmentType(assignment);
+			acc[type] = [...(acc[type] || []), assignment];
+			return acc;
+		}, {} as Record<string, CanvasAssignment[]>);
+
+		const types = Object.entries(grouped);
+		const description = types.map(([type, group], index) => {
+			const groupHeader = `**${type.toUpperCase()}**\n\n`;
+			const groupBlock = group.map((a) => 
+			`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[🔗 View Assignment](${a.html_url})`
+			).join('\n\n');
+			
+			const divider = index < types.length - 1 
+			? `\n\n${'─'.repeat(25)}` 
+			: '';
+
+			return `${groupHeader}${groupBlock}${divider}`;
+		}).join('\n\n');
+
+		const fullDescription = `${progressText}\n\n${description}`;
 
 		const courseDetails = await axios.get<CanvasCourse>(
 			`https://udel.instructure.com/api/v1/courses/${courseId}`,
@@ -202,15 +246,14 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const embed = new EmbedBuilder()
 			.setColor('#3CD6A3')
 			.setTitle(`Upcoming Assignments for ${courseDetails.data.name}`)
-			.setDescription(
-				`${progressText}\n\n` +
-				upcoming.map((a) =>
-					`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
-				).join('\n\n')
-			);
+			.setDescription(fullDescription);
+				// `${progressText}\n\n` +
+				// upcoming.map((a) =>
+				// 	`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
+				// ).join('\n\n')
+			
 
 		await interaction.editReply({ embeds: [embed] });
-
 	} catch (error: unknown) {
 		const message = axios.isAxiosError(error)
 			? error.response?.data ?? error.message
