@@ -61,7 +61,7 @@ export default class extends Command {
 
                 if (isValidToken) {
                     const embed = new EmbedBuilder()
-                        .setColor(0x00b0f4)
+                        .setColor('#3CD6A3')
                         .setTitle('Your Canvas access token has been stored successfully!')
                         .setDescription(
                             'You can now use the following commands:\n\n' +
@@ -75,7 +75,7 @@ export default class extends Command {
                     await modalInteraction.reply({ embeds: [embed] });
                 } else {
                     const errorEmbed = new EmbedBuilder()
-                        .setColor(0xff0000)
+                        .setColor('#ff0000')
                         .setTitle('Invalid input')
                         .setDescription('You have not inputted a valid Canvas token, please try again.');
 

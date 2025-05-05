@@ -1076,7 +1076,7 @@ export function setupMissingLectureHandler(client: Client) {
 				// Final embed
 				const embed = new EmbedBuilder()
 					.setTitle(`Assignments & Files for the week of ${dateStr}:`)
-					.setColor('#3498db')
+					.setColor('#3CD6A3')
 					.addFields(
 						{ name: '📌 Assignments Due This Week:', value: assignmentList },
 						{ name: '📝 Notes:', value: formatList(notes) },
