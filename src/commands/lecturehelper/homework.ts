@@ -59,7 +59,6 @@ export default class extends Command {
 		const baseUrl = CANVAS.BASE_URL;
 
 		try {
-			// const searchTerm = interaction.options.getString('search_term') ?? '';
 			await interaction.deferReply({ ephemeral: true });
 
 			const response = await axios.get<CanvasCourse[]>(baseUrl, {
@@ -129,9 +128,10 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const courseId = interaction.values[0];
 		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
 
-		const assignmentsResponse = await axios.get<CanvasAssignment[]>(assignmentsUrl, {
-			headers: { Authorization: `Bearer ${canvasToken}` }
-		});
+		const assignmentsResponse = await axios.get<CanvasAssignment[]>(
+			`${assignmentsUrl}?per_page=100`,
+			{ headers: { Authorization: `Bearer ${canvasToken}` } }
+		);
 
 		const assignments = assignmentsResponse.data;
 		const now = new Date();
@@ -169,9 +169,11 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			);
 		});
 
-		const submissionRes = await axios.get<CanvasSubmission[]>(`${assignmentsUrl}/?student_id=self&per_page=100`, {
-			headers: { Authorization: `Bearer ${canvasToken}` }
-		});
+		const submissionRes = await axios.get<CanvasSubmission[]>(
+			`https://udel.instructure.com/api/v1/courses/${courseId}/students/submissions?student_id=self&per_page=100`,
+			{ headers: { Authorization: `Bearer ${canvasToken}` } }
+		  );
+		  
 		const submissions = submissionRes.data;
 
 		const completed = thisWeekAssignments.filter(assign => {
