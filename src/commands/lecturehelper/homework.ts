@@ -119,7 +119,7 @@ export default class extends Command {
 		} catch (error: unknown) {
 			const message = axios.isAxiosError(error)
 				? error.response?.data ?? error.message
-				: error as Error.message;
+				: (error as Error).message;
 
 			console.error('Error fetching courses:', message);
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
@@ -172,7 +172,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 	} catch (error: unknown) {
 		const message = axios.isAxiosError(error)
 			? error.response?.data ?? error.message
-			: error as Error.message;
+			: (error as Error).message;
 
 		console.error('Error fetching assignments:', message);
 		await interaction.editReply({ content: 'Failed to fetch assignments.' });
