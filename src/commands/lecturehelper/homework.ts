@@ -193,6 +193,44 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			progressText = `📊 Weekly Progress: **${completedCount} / ${totalCount} assignments completed**\n${progressBar}`;
 		}
 
+		function getAssignmentType(assignment: CanvasAssignment): string{
+			if (assignment.submission_types.includes('online_quiz')) {
+				return '🧪 Quizzes';
+			}
+			if (assignment.submission_types.includes('discussion_topic')) {
+				return '💬 Discussions';
+			}
+			if (assignment.submission_types.includes('online_text_entry') || assignment.submission_types.includes('online_upload')) {
+				return '📝 Written Assignments';
+			}
+			if (assignment.submission_types.includes('online_quiz')) {
+				return '🔗 External Tools';
+			}
+			return '📦 Other';
+		}
+
+		const grouped = upcoming.reduce((acc, assignment) => {
+			const type = getAssignmentType(assignment);
+			acc[type] = [...(acc[type] || []), assignment];
+			return acc;
+		}, {} as Record<string, CanvasAssignment[]>);
+
+		const types = Object.entries(grouped);
+		const description = types.map(([type, group], index) => {
+			const groupHeader = `**${type.toUpperCase()}**\n\n`;
+			const groupBlock = group.map((a) => 
+			`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[🔗 View Assignment](${a.html_url})`
+			).join('\n\n');
+			
+			const divider = index < types.length - 1 
+			? `\n\n${'─'.repeat(25)}` 
+			: '';
+
+			return `${groupHeader}${groupBlock}${divider}`;
+		}).join('\n\n');
+
+		const fullDescription = `${progressText}\n\n${description}`;
+
 		const courseDetails = await axios.get<CanvasCourse>(
 			`https://udel.instructure.com/api/v1/courses/${courseId}`,
 			{ headers: { Authorization: `Bearer ${canvasToken}` } }
@@ -201,12 +239,12 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 		const embed = new EmbedBuilder()
 			.setColor('#3CD6A3')
 			.setTitle(`Upcoming Assignments for ${courseDetails.data.name}`)
-			.setDescription(
-				`${progressText}\n\n` +
-				upcoming.map((a) =>
-					`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
-				).join('\n\n')
-			);
+			.setDescription(fullDescription);
+				// `${progressText}\n\n` +
+				// upcoming.map((a) =>
+				// 	`📘 **${a.name}**\n🕒 Due: <t:${Math.floor(new Date(a.due_at).getTime() / 1000)}:F>\n[View Assignment](${a.html_url})`
+				// ).join('\n\n')
+			
 
 		await interaction.editReply({ embeds: [embed] });
 
