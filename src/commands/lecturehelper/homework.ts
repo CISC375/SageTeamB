@@ -12,6 +12,7 @@ import {
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
 import { CANVAS } from '../../../config';
+import { getUserCanvasToken } from './authenticatecanvas';
 
 
 interface CanvasCourse {
@@ -31,6 +32,7 @@ interface CanvasAssignment {
 let handlerRegistered = false;
 
 export default class extends Command {
+
 	description = 'Fetch upcoming assignments from a Canvas course';
 	runInDM = true;
 	options: ApplicationCommandOptionData[] = [
@@ -43,8 +45,12 @@ export default class extends Command {
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
-		const canvasToken = CANVAS.TOKEN;
-		const baseUrl = CANVAS.BASE_URL;
+		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
+		if (!canvasToken) {
+			await interaction.reply({ content: 'You need to authenticate your Canvas account first, call /authenticatecanvas.', ephemeral: true });
+			return;
+		}
+		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active;`;
 
 		try {
 			// const searchTerm = interaction.options.getString('search_term') ?? '';
@@ -57,7 +63,6 @@ export default class extends Command {
 
 			const validCourses: CanvasCourse[] = [];
 
-			
 
 			// for (const course of allCourses) {
 			// 	const enrollmentUrl = `https://udel.instructure.com/api/v1/courses/${course.id}/enrollments?type[]=StudentEnrollment&include[]=enrollments&page=1&per_page=1`;
@@ -111,21 +116,21 @@ export default class extends Command {
 				setupHomeworkDropdownHandler(interaction.client);
 				handlerRegistered = true;
 			}
-
 		} catch (error: unknown) {
 			const message = axios.isAxiosError(error)
 				? error.response?.data ?? error.message
-				: (error as Error).message;
+				: error as Error.message;
 
 			console.error('Error fetching courses:', message);
 			await interaction.editReply({ content: 'Failed to fetch courses.' });
 		}
 	}
+
 }
 
 
 export async function handleAssignmentCourseSelection(interaction: StringSelectMenuInteraction) {
-	const canvasToken = CANVAS.TOKEN;
+	const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 
 	try {
 		await interaction.deferReply({ ephemeral: true });
@@ -164,11 +169,10 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 			);
 
 		await interaction.editReply({ embeds: [embed] });
-
 	} catch (error: unknown) {
 		const message = axios.isAxiosError(error)
 			? error.response?.data ?? error.message
-			: (error as Error).message;
+			: error as Error.message;
 
 		console.error('Error fetching assignments:', message);
 		await interaction.editReply({ content: 'Failed to fetch assignments.' });

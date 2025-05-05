@@ -68,7 +68,6 @@ export default class extends Command {
 
 }
 
-
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
 const ENCRYPTION_KEY = CANVAS_ENCRYPTION_KEY;

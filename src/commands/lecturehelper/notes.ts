@@ -18,7 +18,6 @@ import {
 
 import { Command } from '@lib/types/Command';
 import axios from 'axios';
-import stringSimilarity from 'string-similarity';
 import { CANVAS } from '../../../config';
 import { getUserCanvasToken } from './authenticatecanvas';
 
