@@ -1,3 +1,4 @@
+/* eslint-disable no-mixed-operators */
 import {
 	ChatInputCommandInteraction,
 	Client,
@@ -13,7 +14,7 @@ import {
 	ApplicationCommandOptionType,
 	ApplicationCommandOptionData,
 	TextChannel,
-	ApplicationCommandPermissions,
+	ApplicationCommandPermissions
 } from 'discord.js';
 
 import { Command } from '@lib/types/Command';
@@ -30,6 +31,7 @@ const activeAttendanceSessions = new Map<string, AttendanceRecord>();
 let initialized = false;
 
 export default class extends Command {
+
 	description = 'Start an attendance session';
 	runInDM = false;
 	permissions: ApplicationCommandPermissions[] = [ADMIN_PERMS, STAFF_PERMS];
@@ -39,8 +41,8 @@ export default class extends Command {
 			name: 'duration',
 			description: 'Duration of the attendance session in seconds (default 600)',
 			type: ApplicationCommandOptionType.Integer,
-			required: false,
-		},
+			required: false
+		}
 	];
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -54,12 +56,12 @@ export default class extends Command {
 			code,
 			professor: interaction.user,
 			expiresAt,
-			attendees: [],
+			attendees: []
 		});
 
 		await interaction.reply({
 			content: `✅ Attendance session started!\n**Code:** \`${code}\`\nDuration: ${duration} seconds.\nStudents may now mark themselves present using \`/here\` or the button.`,
-			ephemeral: true,
+			ephemeral: true
 		});
 
 		const hereButton = new ButtonBuilder()
@@ -71,7 +73,7 @@ export default class extends Command {
 
 		const countdownMessage = await interaction.channel?.send({
 			content: `📢 Students: Click the button below to mark yourself present!\n⏳ Time remaining: ${formatDuration(duration)}`,
-			components: [row],
+			components: [row]
 		});
 
 		if (!countdownMessage) return;
@@ -85,7 +87,7 @@ export default class extends Command {
 
 			await countdownMessage.edit({
 				content: `📢 Students: Click the button below to mark yourself present!\n⏳ Time remaining: ${formatDuration(remainingSeconds)}`,
-				components: [row],
+				components: [row]
 			});
 		}, 1000);
 
@@ -101,21 +103,22 @@ export default class extends Command {
 
 			await countdownMessage.edit({
 				content: '⏰ Attendance session has ended.',
-				components: [disabledRow],
+				components: [disabledRow]
 			});
 
 			// Log attendees
-			const attendeeList =
-				session.attendees.length > 0
+			const attendeeList
+				= session.attendees.length > 0
 					? session.attendees
-							.map((a) => `- ${a.user.tag} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
-							.join('\n')
+						.map((a) => `- ${a.user.tag} (<@${a.user.id}>) at ${new Date(a.timestamp).toLocaleTimeString()}`)
+						.join('\n')
 					: 'No one marked themselves present.';
 
 			const channel = interaction.channel as TextChannel;
 			await channel.send(`📝 Attendance has ended. Here are the students who marked themselves present:\n${attendeeList}`);
 		}, duration * 1000);
 	}
+
 }
 
 function setupAttendanceHandler(client: Client) {

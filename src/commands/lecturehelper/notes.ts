@@ -38,27 +38,27 @@ export default class extends Command {
 			});
 
 			const activeCourses = response.data;
-            console.log(`Fetched ${activeCourses.length} courses`);
+			console.log(`Fetched ${activeCourses.length} courses`);
 
-            const activeCoursesCleaned = [];
-            for (const course of activeCourses) {
-                activeCoursesCleaned.push({ id: course.id, name: course.name });
-            }
+			const activeCoursesCleaned = [];
+			for (const course of activeCourses) {
+				activeCoursesCleaned.push({ id: course.id, name: course.name });
+			}
 
-            if (activeCoursesCleaned.length === 0) {
-                await interaction.editReply({ content: 'No active courses found.' });
-                return;
-            }
+			if (activeCoursesCleaned.length === 0) {
+				await interaction.editReply({ content: 'No active courses found.' });
+				return;
+			}
 
-            const courseOptions = activeCoursesCleaned.map(course => ({
-                label: course.name,
-                value: course.id.toString()
-            }));
+			const courseOptions = activeCoursesCleaned.map(course => ({
+				label: course.name,
+				value: course.id.toString()
+			}));
 
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('course_select')
-                .setPlaceholder('Select a course')
-                .addOptions(courseOptions);
+			const selectMenu = new StringSelectMenuBuilder()
+				.setCustomId('course_select')
+				.setPlaceholder('Select a course')
+				.addOptions(courseOptions);
 
 			const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
 
@@ -112,7 +112,7 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 	const searchTerm = interaction.fields.getTextInputValue('search_term');
 	const matchThreshold = 0.5;
 
-	try{
+	try {
 		await interaction.deferReply();
 		const foldersUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/folders`;
 		const foldersResponse = await axios.get(foldersUrl, {
@@ -125,7 +125,7 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 			return;
 		}
 
-		let matchedFiles = [];
+		const matchedFiles = [];
 
 		for (const folder of folders) {
 			const filesUrl = `https://udel.instructure.com/api/v1/folders/${folder.id}/files`;
@@ -135,7 +135,7 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 				});
 
 				const files = filesResponse.data;
-        		console.log(`Fetched ${files.length} files from course`);
+				console.log(`Fetched ${files.length} files from course`);
 				const filtered = files.filter(file =>
 					file.display_name.toLowerCase().includes(searchTerm.toLowerCase())
 				);
@@ -146,12 +146,12 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 			}
 		}
 
-        console.log(`Search Term: ${searchTerm}`);  // Log search term with each file fetch
+		console.log(`Search Term: ${searchTerm}`); // Log search term with each file fetch
 
-        if (matchedFiles.length === 0) {
-            await interaction.editReply({ content: 'No files found matching "${searchTerm}" for this course.' });
-            return;
-        }
+		if (matchedFiles.length === 0) {
+			await interaction.editReply({ content: 'No files found matching "${searchTerm}" for this course.' });
+			return;
+		}
 
 		// Sort files alphabetically by name
 		matchedFiles.sort((a, b) => a.display_name.localeCompare(b.display_name));
@@ -163,7 +163,7 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 			return `(${index + 1} of ${matchedFiles.length}) ${icon} ${file.display_name} (${size}) — [Download File](${file.url})`;
 		}).join(`\n\n`);
 
-		//const latestFile = matchedFiles[0];
+		// const latestFile = matchedFiles[0];
 		const embed = new EmbedBuilder()
 			.setColor('#3CD6A3')
 			.setTitle(`Found file(s) matching: "${searchTerm}"`)
@@ -171,45 +171,45 @@ async function handleFileSearchModal(interaction: ModalSubmitInteraction) {
 
 		console.log('Sending embed response...');
 		await interaction.editReply({ embeds: [embed] });
-		} catch (error) {
-			console.error('Error fetching course files:', error.response ? error.response.data : error.message);
-			await interaction.editReply({ content: 'Failed to fetch course files.' });
+	} catch (error) {
+		console.error('Error fetching course files:', error.response ? error.response.data : error.message);
+		await interaction.editReply({ content: 'Failed to fetch course files.' });
 	}
 }
 
 // Displays an emoji correlating to the file type
 function getFileIcon(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-        case 'pdf':
-            return '📄';
-        case 'doc':
-        case 'docx':
-            return '📝';
-        case 'ppt':
-        case 'pptx':
-            return '📊';
-        case 'xls':
-        case 'xlsx':
-            return '📈';
-        case 'zip':
-        case 'rar':
-            return '🗜️';
-        case 'jpg':
-        case 'jpeg':
-        case 'png':
-        case 'gif':
-            return '🖼️';
-        default:
-            return '📁';
-    }
+	const ext = filename.split('.').pop()?.toLowerCase();
+	switch (ext) {
+		case 'pdf':
+			return '📄';
+		case 'doc':
+		case 'docx':
+			return '📝';
+		case 'ppt':
+		case 'pptx':
+			return '📊';
+		case 'xls':
+		case 'xlsx':
+			return '📈';
+		case 'zip':
+		case 'rar':
+			return '🗜️';
+		case 'jpg':
+		case 'jpeg':
+		case 'png':
+		case 'gif':
+			return '🖼️';
+		default:
+			return '📁';
+	}
 }
 
 // Displays the file size
 function formatFileSize(bytes: number): string {
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    if (bytes === 0) return '0 B';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    const size = (bytes / Math.pow(1024, i)).toFixed(1);
-    return `${size} ${sizes[i]}`;
+	const sizes = ['B', 'KB', 'MB', 'GB'];
+	if (bytes === 0) return '0 B';
+	const i = Math.floor(Math.log(bytes) / Math.log(1024));
+	const size = (bytes / Math.pow(1024, i)).toFixed(1);
+	return `${size} ${sizes[i]}`;
 }
