@@ -31,7 +31,7 @@ export default class extends Command {
             .setColor('#3CD6A3')
             .setDescription(
                 'Input your Canvas access token for use with the LectureHelper commands.\n\n' +
-                'Click the "Token Setup Instructions" button below to view instructions on how to obtain your Canvas access token.'
+                'Click the "Token Setup Instructions" button below to view instructions on how to obtain your Canvas Access Token.'
             );
 
         // Create the buttons
