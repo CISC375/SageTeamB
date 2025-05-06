@@ -69,7 +69,7 @@ export default class extends Command {
 
                 // Send the image as an attachment for download
                 await buttonInteraction.reply({
-                    content: 'Here are the instructions for obtaining your Canvas access token.',
+                    content: 'Here are the instructions for obtaining your Canvas Access Token.',
                     files: [attachment],
                     /* ephemeral: true */
                 });
