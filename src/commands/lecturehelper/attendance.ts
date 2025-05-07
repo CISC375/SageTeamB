@@ -141,20 +141,31 @@ export default class extends Command {
 			// Log absentees (Only logs members who aren't admins, bots, or already present)
 			await interaction.guild.members.fetch();
 			const excludedRoleIds = [ROLES.ADMIN, ROLES.STAFF, ROLES.STUDENT_ADMIN];
+			// const excludedRoleIds = ['1369727083688759476'];
 			const attendeeIds = new Set(session.attendees.map(a => a.user.id));
 
 			const absentees = interaction.guild.members.cache.filter(member =>
 				!member.user.bot
 				&& !attendeeIds.has(member.id)
 				&& !excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
+				// && excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
 			);
 			const absenteeList = absentees.size > 0
 				? absentees.map(m => `- ${m.user.username} (<@${m.user.id}>)`).join('\n')
-				: 'The gang\'s all here!';
+				: 'Nevermind! The gang\'s all here!';
 
 			const channel = interaction.channel as TextChannel;
 			await channel.send(`📝 Attendance has ended. Here are the students who marked themselves present:\n${attendeeList}`);
 			await channel.send(`Uh oh! Looks like these guys think they can skip class today:\n ${absenteeList}`);
+
+			// Send the absentees a Direct Message
+			for (const [id, member] of absentees) {
+				try {
+					await member.send("Here's a test DM. How come you skipped class? This DM will soon be replaced by the missinglecture command");
+				} catch {
+					console.log(`Couldn't find user with user id: ${id}`);
+				}
+			}
 		}, duration * 1000);
 	}
 
