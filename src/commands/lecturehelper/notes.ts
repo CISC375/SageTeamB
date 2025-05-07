@@ -30,7 +30,12 @@ export default class extends Command {
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 		if (!canvasToken) {
-			await interaction.reply({ content: 'You need to authenticate your Canvas account first, run /authenticatecanvas.', ephemeral: true });
+			const errorEmbed = new EmbedBuilder()
+				.setColor('#ff0000')
+				.setTitle('You cannot use this command!')
+				.setDescription('To use `/notes`, you need to input a Canvas Access Token. Do this by running `/authenticatecanvas`.');
+
+			await interaction.reply({ embeds: [errorEmbed], /* ephemeral: true */ });
 			return;
 		}
 		setupInteractionHandler(interaction.client, canvasToken); // initialize handler first thing

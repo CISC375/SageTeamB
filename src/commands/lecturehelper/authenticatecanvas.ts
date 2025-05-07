@@ -27,24 +27,43 @@ export default class extends Command {
 	runInDM = true;
 
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
+		const user = await interaction.client.mongo
+			.collection(DB.USERS)
+			.findOne({ discordId: interaction.user.id });
+
+		if (!user) {
+			await interaction.reply({
+				content: `You are not registered in the database. Please contact ${MAINTAINERS}.`,
+				ephemeral: true
+			});
+			return;
+		}
+
+		const hasToken = !!(user as any).canvasToken;
+		const description = hasToken
+			? 'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", clear it by clicking "Reset Token", or view instructions by clicking "Get Instructions".'
+			: 'Input your Canvas access token for use with the LectureHelper commands.\n\nClick the "Token Setup Instructions" button to view instructions on how to obtain your Canvas Access Token, or "Reset Token" to clear any existing token.';
+
 		const instructionEmbed = new EmbedBuilder()
 			.setColor('#3CD6A3')
-			.setDescription(
-				'Input your Canvas access token for use with the LectureHelper commands.\n\n' +
-				'Click the "Token Setup Instructions" button below to view instructions on how to obtain your Canvas Access Token.'
-			);
+			.setDescription(description);
 
 		const inputButton = new ButtonBuilder()
 			.setCustomId('canvas_token_input_button')
 			.setLabel('🗳️ Input Token')
 			.setStyle(ButtonStyle.Primary);
 
+		const resetButton = new ButtonBuilder()
+			.setCustomId('reset_token_button')
+			.setLabel('🗑️ Reset Token')
+			.setStyle(ButtonStyle.Danger);
+
 		const downloadButton = new ButtonBuilder()
 			.setCustomId('download_instructions_button')
 			.setLabel('📄 Token Setup Instructions')
 			.setStyle(ButtonStyle.Secondary);
 
-		const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(inputButton, downloadButton);
+		const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(inputButton, resetButton, downloadButton);
 
 		await interaction.reply({
 			embeds: [instructionEmbed],
@@ -53,10 +72,12 @@ export default class extends Command {
 
 		const buttonFilter = (i: Interaction) =>
 			i.isButton() &&
-			(i.customId === 'canvas_token_input_button' || i.customId === 'download_instructions_button') &&
+			(i.customId === 'canvas_token_input_button' ||
+				i.customId === 'download_instructions_button' ||
+				i.customId === 'reset_token_button') &&
 			i.user.id === interaction.user.id;
 
-		const buttonCollector = interaction.channel!.createMessageComponentCollector({ filter: buttonFilter, time: 600_000 });
+		const buttonCollector = interaction.channel!.createMessageComponentCollector({ filter: buttonFilter, time: 1_800_000 }); // 30 minutes
 
 		buttonCollector.on('collect', async (buttonInteraction: ButtonInteraction) => {
 			if (buttonInteraction.customId === 'download_instructions_button') {
@@ -67,8 +88,48 @@ export default class extends Command {
 				await buttonInteraction.reply({
 					content: 'Here are the instructions for obtaining your Canvas Access Token.',
 					files: [attachment],
-					ephemeral: true
+					/* ephemeral: true */
 				});
+			} else if (buttonInteraction.customId === 'reset_token_button') {
+				const user = await buttonInteraction.client.mongo
+					.collection(DB.USERS)
+					.findOne({ discordId: buttonInteraction.user.id });
+
+				if (!user) {
+					await buttonInteraction.reply({
+						content: `You are not registered in the database. Please contact ${MAINTAINERS}.`,
+						ephemeral: true
+					});
+					return;
+				}
+
+				const hadToken = !!(user as any).canvasToken;
+				if (!hadToken) {
+					await buttonInteraction.reply({
+						content: 'You do not have a Canvas token stored to reset.',
+						ephemeral: true
+					});
+					return;
+				}
+
+				await buttonInteraction.client.mongo.collection(DB.USERS).updateOne(
+					{ discordId: buttonInteraction.user.id },
+					{ $set: { canvasToken: null } }
+				);
+
+				const resetEmbed = new EmbedBuilder()
+					.setColor('#3CD6A3')
+					.setTitle('Canvas token reset successfully!')
+					.setDescription('Your Canvas token has been cleared. You can set a new token by clicking "Input Token".');
+
+				const updatedEmbed = new EmbedBuilder()
+					.setColor('#3CD6A3')
+					.setDescription(
+						'Input your Canvas access token for use with the LectureHelper commands.\n\nClick the "Token Setup Instructions" button to view instructions on how to obtain your Canvas Access Token, or "Reset Token" to clear any existing token.'
+					);
+
+				await buttonInteraction.reply({ embeds: [resetEmbed], /* ephemeral: true */ });
+				await interaction.editReply({ embeds: [updatedEmbed], components: [buttonRow] });
 			} else if (buttonInteraction.customId === 'canvas_token_input_button') {
 				const modal = new ModalBuilder().setCustomId('canvas_token_modal').setTitle('Canvas Access Token');
 
@@ -95,22 +156,24 @@ export default class extends Command {
 					const token = modalInteraction.fields.getTextInputValue('token_input').trim();
 
 					if (!token || token.length < 10) {
-						await modalInteraction.reply({
-							content: 'The token you provided looks invalid. Please double-check and try again.',
-							ephemeral: true
-						});
-						return;
+						const errorEmbed = new EmbedBuilder()
+							.setColor('#ff0000')
+							.setTitle('Invalid input')
+							.setDescription('You have not inputted a valid Canvas token, please try again.');
+						await modalInteraction.reply({ embeds: [errorEmbed] });
+						return
 					}
 
-					const user: SageUser = await modalInteraction.client.mongo
+					const user = await modalInteraction.client.mongo
 						.collection(DB.USERS)
 						.findOne({ discordId: modalInteraction.user.id });
 
 					if (!user) {
-						await modalInteraction.reply({
-							content: `You are not registered in the database. Please contact ${MAINTAINERS}.`,
-							ephemeral: true
-						});
+						const errorEmbed = new EmbedBuilder()
+							.setColor('#ff0000')
+							.setTitle('Unregistered User')
+							.setDescription(`You are not registered in the database. Please contact ${MAINTAINERS}.`);
+						await modalInteraction.reply({ embeds: [errorEmbed], /* ephemeral: true} */ });
 						return;
 					}
 
@@ -129,20 +192,23 @@ export default class extends Command {
 								'You can now use the following commands:\n\n' +
 								'📝 `/homework` - Fetch upcoming assignments.\n' +
 								'📚 `/missinglecture` - Retrieve resources for a missed lecture.\n' +
-								'📒 `/notes` - Fetch the latest course file.'
+								'📒 `/notes` - Fetch the latest course file.\n\n' +
+								'To update your token, click "Input Token" again within 30 minutes or run this command again later.'
 							);
-						await modalInteraction.reply({ embeds: [embed] });
 
-						inputButton.setDisabled(true);
-						downloadButton.setDisabled(true);
-						await interaction.editReply({ components: [buttonRow] });
+						const updatedEmbed = new EmbedBuilder()
+							.setColor('#3CD6A3')
+							.setDescription(
+								'Your Canvas token is already stored. You can update it by clicking "Input Token", view instructions by clicking "Get Instructions", or clear it by clicking "Reset Token".'
+							);
 
-						buttonCollector.stop();
+						await modalInteraction.reply({ embeds: [embed], /* ephemeral: true} */ });
+						await interaction.editReply({ embeds: [updatedEmbed], components: [buttonRow], /* ephemeral: true} */ });
 					} else {
 						const errorEmbed = new EmbedBuilder()
 							.setColor('#ff0000')
-							.setTitle('Invalid Token')
-							.setDescription('The token appears to be invalid. Please try again.');
+							.setTitle('Invalid input')
+							.setDescription('You have not inputted a valid Canvas token, please try again.');
 						await modalInteraction.reply({ embeds: [errorEmbed] });
 					}
 				} catch (err) {
@@ -158,6 +224,7 @@ export default class extends Command {
 		buttonCollector.on('end', async () => {
 			inputButton.setDisabled(true);
 			downloadButton.setDisabled(true);
+			resetButton.setDisabled(true);
 			await interaction.editReply({ components: [buttonRow] });
 		});
 	}
@@ -186,10 +253,10 @@ export function decryptToken(encrypted: string): string {
 
 export async function getUserCanvasToken(db: Db, discordId: string): Promise<string | null> {
 	const user = await db.collection(DB.USERS).findOne({ discordId });
-	if (!user || !user.canvasToken) return null;
+	if (!user || !(user as any).canvasToken) return null;
 
 	try {
-		return decryptToken(user.canvasToken);
+		return decryptToken((user as any).canvasToken);
 	} catch (error) {
 		console.error('Failed to decrypt Canvas token:', error);
 		return null;

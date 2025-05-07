@@ -20,6 +20,7 @@ import ical from 'ical-generator';
 import { CANVAS } from '@root/config';
 import { Command } from '@lib/types/Command';
 import { getUserCanvasToken } from './authenticatecanvas';
+import { error } from 'console';
 
 async function getCourseFiles(courseId: string, token: string) {
 	const response = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/files`, {
@@ -902,7 +903,12 @@ export default class extends Command {
 	async run(interaction: ChatInputCommandInteraction): Promise<void> {
 		const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 		if (!canvasToken) {
-			await interaction.reply({ content: 'You need to authenticate your Canvas account first, call /authenticatecanvas.', ephemeral: true });
+			const errorEmbed = new EmbedBuilder()
+				.setColor('#ff0000')
+				.setTitle('You cannot use this command!')
+				.setDescription('To use `/missinglecture`, you need to input a Canvas Access Token. Do this by running `/authenticatecanvas`.');
+
+			await interaction.reply({ embeds: [errorEmbed], /* ephemeral: true */ });
 			return;
 		}
 		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active`;
