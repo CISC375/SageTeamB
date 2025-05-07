@@ -114,20 +114,17 @@ export default class extends Command {
 						return;
 					}
 
-					const encryptedToken = encryptToken(token);
-
-					await modalInteraction.client.mongo.collection(DB.USERS).updateOne(
-						{ discordId: modalInteraction.user.id },
-						{ $set: { canvasToken: encryptedToken } },
-						{ upsert: true }
-					);
-
 					const isValidToken = await validateCanvasToken(token);
 
 					if (isValidToken) {
+						const encryptedToken = encryptToken(token);
+						await modalInteraction.client.mongo.collection(DB.USERS).updateOne(
+							{ discordId: modalInteraction.user.id },
+							{ $set: { canvasToken: encryptedToken } }
+						);
 						const embed = new EmbedBuilder()
 							.setColor('#3CD6A3')
-							.setTitle('Your Canvas access token has been stored successfully! ✅')
+							.setTitle('Your Canvas access token has been stored successfully!')
 							.setDescription(
 								'You can now use the following commands:\n\n' +
 								'📝 `/homework` - Fetch upcoming assignments.\n' +
@@ -136,12 +133,11 @@ export default class extends Command {
 							);
 						await modalInteraction.reply({ embeds: [embed] });
 
-						// Optionally disable buttons after success
 						inputButton.setDisabled(true);
 						downloadButton.setDisabled(true);
 						await interaction.editReply({ components: [buttonRow] });
 
-						buttonCollector.stop(); // Prevent further interactions
+						buttonCollector.stop();
 					} else {
 						const errorEmbed = new EmbedBuilder()
 							.setColor('#ff0000')
@@ -166,8 +162,6 @@ export default class extends Command {
 		});
 	}
 }
-
-// --- Helper Functions ---
 
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
