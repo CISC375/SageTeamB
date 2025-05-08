@@ -199,7 +199,7 @@ export default class extends Command {
 						const updatedEmbed = new EmbedBuilder()
 							.setColor('#3CD6A3')
 							.setDescription(
-								'Your Canvas token is already stored. You can update it by clicking "Input Token", view instructions by clicking "Get Instructions", or clear it by clicking "Reset Token".'
+								'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", view instructions by clicking "Get Instructions", or clear it by clicking "Reset Token".'
 							);
 
 						await modalInteraction.reply({ embeds: [embed], /* ephemeral: true} */ });
