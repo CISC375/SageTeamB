@@ -41,7 +41,7 @@ export default class extends Command {
 
 		const hasToken = !!(user as any).canvasToken;
 		const description = hasToken
-			? 'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", clear it by clicking "Reset Token", or view instructions by clicking "Get Instructions".'
+			? 'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", clear it by clicking "Reset Token", or view instructions for getting a Canvas Access Token by clicking "Token Setup Instructions".'
 			: 'Input your Canvas access token for use with the LectureHelper commands.\n\nClick the "Token Setup Instructions" button to view instructions on how to obtain your Canvas Access Token, or "Reset Token" to clear any existing token.';
 
 		const instructionEmbed = new EmbedBuilder()
@@ -199,7 +199,7 @@ export default class extends Command {
 						const updatedEmbed = new EmbedBuilder()
 							.setColor('#3CD6A3')
 							.setDescription(
-								'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", view instructions by clicking "Get Instructions", or clear it by clicking "Reset Token".'
+								'Your Canvas token is already stored.\n\nYou can update it by clicking "Input Token", clear it by clicking "Reset Token", or view instructions for getting a Canvas Access Token by clicking "Token Setup Instructions".'
 							);
 
 						await modalInteraction.reply({ embeds: [embed], /* ephemeral: true} */ });
