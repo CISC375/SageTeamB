@@ -70,7 +70,7 @@ export default class extends Command {
 		const baseUrl = `${CANVAS.BASE_URL}/courses?page=1&per_page=100&enrollment_state=active;`;
 
 		try {
-			await interaction.deferReply({ ephemeral: true });
+			await interaction.deferReply({ /* ephemeral: true */ });
 
 			const response = await axios.get<CanvasCourse[]>(baseUrl, {
 				headers: { Authorization: `Bearer ${canvasToken}` }
@@ -135,7 +135,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 	const canvasToken = await getUserCanvasToken(interaction.client.mongo, interaction.user.id);
 
 	try {
-		await interaction.deferReply({ ephemeral: true });
+		await interaction.deferReply({ /* ephemeral: true */ });
 
 		const courseId = interaction.values[0];
 		const assignmentsUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/assignments`;
@@ -258,7 +258,7 @@ export async function handleAssignmentCourseSelection(interaction: StringSelectM
 				// ).join('\n\n')
 			
 
-		await interaction.editReply({ embeds: [embed] });
+		await interaction.editReply({ embeds: [embed], /* ephemeral: true */ });
 	} catch (error: unknown) {
 		const message = axios.isAxiosError(error)
 			? error.response?.data ?? error.message
