@@ -21,6 +21,8 @@ import { ADMIN_PERMS, STAFF_PERMS } from '@root/src/lib/permissions';
 import { DB } from '@root/config';
 import { ObjectId } from 'mongodb';
 import { ROLES } from '../../../config';
+import { handleMissingLectureManually, setupMissingLectureHandler } from './missinglecture';
+
 
 type AttendanceRecord = {
 	_id: ObjectId;
@@ -140,30 +142,39 @@ export default class extends Command {
 
 			// Log absentees (Only logs members who aren't admins, bots, or already present)
 			await interaction.guild.members.fetch();
-			const excludedRoleIds = [ROLES.ADMIN, ROLES.STAFF, ROLES.STUDENT_ADMIN];
-			// const excludedRoleIds = ['1369727083688759476'];
+			// const excludedRoleIds = [ROLES.ADMIN, ROLES.STAFF, ROLES.STUDENT_ADMIN];
+			const excludedRoleIds = ['1369727083688759476'];
 			const attendeeIds = new Set(session.attendees.map(a => a.user.id));
 
 			const absentees = interaction.guild.members.cache.filter(member =>
 				!member.user.bot
 				&& !attendeeIds.has(member.id)
-				&& !excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
-				// && excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
+				// && !excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
+				&& excludedRoleIds.some(roleId => member.roles.cache.has(roleId))
 			);
 			const absenteeList = absentees.size > 0
-				? absentees.map(m => `- ${m.user.username} (<@${m.user.id}>)`).join('\n')
+				? absentees.map(m => `- ${m.user.globalName} (<@${m.user.id}>)`).join('\n')
 				: 'Nevermind! The gang\'s all here!';
 
 			const channel = interaction.channel as TextChannel;
 			await channel.send(`📝 Attendance has ended. Here are the students who marked themselves present:\n${attendeeList}`);
-			await channel.send(`Uh oh! Looks like these guys think they can skip class today:\n ${absenteeList}`);
+			await channel.send(`Uh oh! Looks like these guys think they can skip class today:\n ${absenteeList}\nCheck your DMs to see what you missed!`);
 
 			// Send the absentees a Direct Message
 			for (const [id, member] of absentees) {
 				try {
-					await member.send("Here's a test DM. How come you skipped class? This DM will soon be replaced by the missinglecture command");
+					const missingInfo = await handleMissingLectureManually(interaction.options.getString('class_code', true), '2025-05-05');
+					// await member.send(`You missed class today! Here's what you missed:\n\n${missingInfo}`);
+					console.log({ missingInfo });
+					await member.send(
+						typeof missingInfo === 'string'
+							? { content: missingInfo }
+							: { embeds: [missingInfo] }
+
+					);
 				} catch {
 					console.log(`Couldn't find user with user id: ${id}`);
+					console.log(`User ID: ${id}\nClass Code ${interaction.options.getString('class_code', true)}\nDate: 2025-05-05`);
 				}
 			}
 		}, duration * 1000);
