@@ -118,75 +118,141 @@ async function handleCourseSelection(interaction: StringSelectMenuInteraction) {
 	await interaction.showModal(modal);
 }
 // String matching logic with threshold as a constant (from 0 - 1.0, think of it as 0% - 100% match)
+
 async function handleFileSearchModal(interaction: ModalSubmitInteraction, token: string) {
 	const [_, courseId] = interaction.customId.split(':');
-	const searchTerm = interaction.fields.getTextInputValue('search_term');
-	const matchThreshold = 0.5;
+	const searchTerm = interaction.fields.getTextInputValue('search_term').toLowerCase();
+	const matchedResults: string[] = [];
 
+	await interaction.deferReply();
+
+	// ---------- 1. SEARCH FILES ----------
 	try {
-		await interaction.deferReply();
-		const foldersUrl = `https://udel.instructure.com/api/v1/courses/${courseId}/folders`;
+		const foldersUrl = `${CANVAS.BASE_URL}/courses/${courseId}/folders`;
 		const foldersResponse = await axios.get(foldersUrl, {
 			headers: { Authorization: `Bearer ${token}` }
 		});
 
-		const folders = foldersResponse.data;
-		if (folders.length === 0) {
-			await interaction.editReply({ content: 'No folders found for this course.' });
-			return;
-		}
-
-		const matchedFiles = [];
-
-		for (const folder of folders) {
-			const filesUrl = `https://udel.instructure.com/api/v1/folders/${folder.id}/files`;
+		for (const folder of foldersResponse.data) {
+			const filesUrl = `${CANVAS.BASE_URL}/folders/${folder.id}/files`;
 			try {
 				const filesResponse = await axios.get(filesUrl, {
 					headers: { Authorization: `Bearer ${token}` }
 				});
-
-				const files = filesResponse.data;
-				console.log(`Fetched ${files.length} files from course`);
-				const filtered = files.filter(file =>
-					file.display_name.toLowerCase().includes(searchTerm.toLowerCase())
-				);
-
-				matchedFiles.push(...filtered);
-			} catch (error) {
-				console.warn(`Skipped folder ${folder.name} due to error.`);
+				for (const file of filesResponse.data) {
+					if (file.display_name.toLowerCase().includes(searchTerm)) {
+						const icon = getFileIcon(file.display_name);
+						const size = formatFileSize(file.size);
+						matchedResults.push(`${icon} ${file.display_name} (${size}) — [Download](${file.url})`);
+					}
+				}
+			} catch (_) {
+				continue;
 			}
 		}
-
-		console.log(`Search Term: ${searchTerm}`); // Log search term with each file fetch
-
-		if (matchedFiles.length === 0) {
-			await interaction.editReply({ content: 'No files found matching "${searchTerm}" for this course.' });
-			return;
-		}
-
-		// Sort files alphabetically by name
-		matchedFiles.sort((a, b) => a.display_name.localeCompare(b.display_name));
-
-		// Create description with icon + file size
-		const fileDescriptions = matchedFiles.map((file, index) => {
-			const icon = getFileIcon(file.display_name);
-			const size = formatFileSize(file.size);
-			return `(${index + 1} of ${matchedFiles.length}) ${icon} ${file.display_name} (${size}) — [Download File](${file.url})`;
-		}).join(`\n\n`);
-
-		// const latestFile = matchedFiles[0];
-		const embed = new EmbedBuilder()
-			.setColor('#3CD6A3')
-			.setTitle(`Found file(s) matching: "${searchTerm}"`)
-			.setDescription(fileDescriptions);
-
-		console.log('Sending embed response...');
-		await interaction.editReply({ embeds: [embed] });
-	} catch (error) {
-		console.error('Error fetching course files:', error.response ? error.response.data : error.message);
-		await interaction.editReply({ content: 'Failed to fetch course files.' });
+	} catch (err) {
+		console.warn('File search failed:', err);
 	}
+
+	// ---------- 2. SEARCH MODULES AND THEIR FILES ----------
+	try {
+		const modulesResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/modules`, {
+			headers: { Authorization: `Bearer ${token}` }
+		});
+
+		for (const module of modulesResponse.data) {
+			if (module.name.toLowerCase().includes(searchTerm)) {
+				const itemsResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/modules/${module.id}/items`, {
+					headers: { Authorization: `Bearer ${token}` }
+				});
+
+				for (const item of itemsResponse.data) {
+					if (item.type === 'File' && item.url) {
+						const fileData = await axios.get(item.url, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+						const file = fileData.data;
+						const icon = getFileIcon(file.display_name);
+						const size = formatFileSize(file.size);
+						matchedResults.push(`${icon} ${file.display_name} (${size}) — [Download](${file.url})`);
+					} else if (item.type === 'Page') {
+						const pageData = await axios.get(item.url, {
+							headers: { Authorization: `Bearer ${token}` }
+						});
+
+						const body = pageData.data.body || '';
+						const fileIds: string[] = [];
+						const regex = /\/files\/(\d+)/g;
+						let match;
+						while ((match = regex.exec(body)) !== null) {
+							fileIds.push(match[1]);
+						}
+
+						for (const id of fileIds) {
+							const fileRes = await axios.get(`${CANVAS.BASE_URL}/files/${id}`, {
+								headers: { Authorization: `Bearer ${token}` }
+							});
+							const file = fileRes.data;
+							const icon = getFileIcon(file.display_name);
+							const size = formatFileSize(file.size);
+							matchedResults.push(`${icon} ${file.display_name} (${size}) — [Download](${file.url})`);
+						}
+					}
+				}
+			}
+		}
+	} catch (err) {
+		console.warn('Module search failed:', err);
+	}
+
+	// ---------- 3. SEARCH ASSIGNMENTS ----------
+	try {
+		const assignmentsResponse = await axios.get(`${CANVAS.BASE_URL}/courses/${courseId}/assignments`, {
+			headers: { Authorization: `Bearer ${token}` }
+		});
+
+		for (const assignment of assignmentsResponse.data) {
+			const nameMatch = assignment.name.toLowerCase().includes(searchTerm);
+			const descMatch = assignment.description && assignment.description.toLowerCase().includes(searchTerm);
+
+			if (nameMatch || descMatch) {
+				const body = assignment.description || '';
+				const fileIds: string[] = [];
+				const regex = /\/files\/(\d+)/g;
+				let match;
+				while ((match = regex.exec(body)) !== null) {
+					fileIds.push(match[1]);
+				}
+
+				for (const id of fileIds) {
+					const fileRes = await axios.get(`${CANVAS.BASE_URL}/files/${id}`, {
+						headers: { Authorization: `Bearer ${token}` }
+					});
+					const file = fileRes.data;
+					const icon = getFileIcon(file.display_name);
+					const size = formatFileSize(file.size);
+					matchedResults.push(`${icon} ${file.display_name} (${size}) — [Download](${file.url})`);
+				}
+			}
+		}
+	} catch (err) {
+		console.warn('Assignment search failed:', err);
+	}
+
+	// ---------- DISPLAY RESULTS ----------
+	if (matchedResults.length === 0) {
+		await interaction.editReply({ content: `No results found for "${searchTerm}".` });
+		return;
+	}
+
+	const embed = new EmbedBuilder()
+		.setColor('#3CD6A3')
+		.setTitle(`Search results for: "${searchTerm}"`)
+		.setDescription(matchedResults.join('\n\n'));
+
+	await interaction.editReply({ embeds: [embed] });
 }
+
 
 // Displays an emoji correlating to the file type
 function getFileIcon(filename: string): string {
