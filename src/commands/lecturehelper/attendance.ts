@@ -163,8 +163,17 @@ export default class extends Command {
 			// Send the absentees a Direct Message
 			for (const [id, member] of absentees) {
 				try {
+					// Get the user's class code
+					const userClassCode = interaction.options.getString('class_code', true);
+
+					// Get the current date
+					const currentDate: Date = new Date();
+					const year = currentDate.getFullYear();
+					const month = currentDate.getMonth() + 1;
+					const day = currentDate.getDate();
+
 					// Functionally identical to /missinglecture, but manually takes in a date and class code
-					const missingInfo = await handleMissingLectureManually(interaction.options.getString('class_code', true), '2025-05-05');
+					const missingInfo = await handleMissingLectureManually(userClassCode, `${year}-${month}-${day}`);
 					console.log({ missingInfo });
 					await member.send(
 						typeof missingInfo === 'string'
