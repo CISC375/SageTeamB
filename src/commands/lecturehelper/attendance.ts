@@ -179,7 +179,6 @@ export default class extends Command {
 						typeof missingInfo === 'string'
 							? { content: missingInfo }
 							: { embeds: [missingInfo] }
-
 					);
 				} catch {
 					console.log(`Couldn't find user with user id: ${id}`);
